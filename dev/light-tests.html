@@ -240,6 +240,9 @@ async function run() {
     const d=await details({effect_favorites:favorites});d.browse('Effects');
     const buttons=d.choices.children;
     assert(buttons[0].disabled&&buttons[0].classList.contains('selected')&&buttons[2].disabled,'choice guards');
+    assert(getComputedStyle(buttons[0]).opacity==='1'&&getComputedStyle(buttons[0]).boxShadow.includes('inset'),'selected effect must remain visible with a border');
+    assert(getComputedStyle(buttons[2]).opacity==='0.35','unsupported effect remains subdued');
+    const count=calls.length;buttons[0].click();await pause();assert(calls.length===count,'selected effect sent again');
     assert(buttons[1].textContent==='Regenbogen','label or order');buttons[1].click();await pause();
     assert(last().data.effect==='Rainbow'&&Object.keys(last().data).length===2&&!d.alive,'effect request');
   });
