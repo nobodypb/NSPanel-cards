@@ -141,6 +141,44 @@ async function run() {
     assert(!sh._trackActive && calls.length === 0, 'cancel committed a value');
     sh.close();
   });
+  for (const listForm of [false, true]) await test(`switch detail target keeps tap entity (list=${listForm})`, async () => {
+    fixture.replaceChildren(); calls.length = 0;
+    card = document.createElement('nspanel-switch-card');
+    const item = { entity: 'switch.power', detail_entity: ' fan.speed ' };
+    card.setConfig({ haptics: false, ...(listForm ? { switches: [item] } : item) });
+    fixture.append(card);
+    card.hass = { states: { 'switch.power': { entity_id: 'switch.power', state: 'off', attributes: {} } },
+      callService: (domain, service, data) => { calls.push({domain, service, data}); return Promise.resolve(); } };
+    await pause();
+    const opened = [];
+    card.addEventListener('hass-more-info', (e) => opened.push(e.detail.entityId));
+    const button = card.shadowRoot.querySelector('.btn');
+    button.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    assert(opened.join() === 'fan.speed' && calls.length === 0, 'hold target or no-service contract wrong');
+    button.click();
+    assert(calls.length === 1 && calls[0].data.entity_id === 'switch.power' && calls[0].service === 'turn_on', 'tap redirected');
+  });
+  await test('switch detail target fallback and more_info guard', async () => {
+    for (const detail of ['', '   ', 12]) {
+      card.setConfig({ entity: 'switch.power', detail_entity: detail, haptics: false });
+      await pause();
+      const opened = [];
+      card.addEventListener('hass-more-info', (e) => opened.push(e.detail.entityId), {once:true});
+      card.shadowRoot.querySelector('.btn').dispatchEvent(new MouseEvent('contextmenu', {cancelable:true}));
+      assert(opened.join() === 'switch.power', 'invalid optional target did not fall back');
+    }
+    card.setConfig({ entity: 'switch.power', detail_entity: 'fan.speed', more_info: false });
+    await pause();
+    const opened = []; calls.length = 0;
+    card.addEventListener('hass-more-info', (e) => opened.push(e.detail.entityId));
+    card.shadowRoot.querySelector('.btn').dispatchEvent(new MouseEvent('contextmenu', {cancelable:true}));
+    assert(!opened.length && !calls.length, 'disabled hold sent event or command');
+  });
+  await test('switch editor exposes detail target for shorthand and list entries', () => {
+    assert(SWITCH_SCHEMA.some((row) => row.name === 'detail_entity'), 'missing shorthand editor');
+    const list = SWITCH_SCHEMA.find((row) => row.name === 'switches');
+    assert(JSON.stringify(list).includes('detail_entity'), 'missing list editor');
+  });
   await mount(state(['onoff']));
   const preview = new URLSearchParams(location.search).get('preview');
   if (preview === 'dimmer') await mount(state(['brightness']));
