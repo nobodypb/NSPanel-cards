@@ -741,7 +741,7 @@ const LIGHT_SHEET_CSS = `
 .light-choice span { overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
 .light-choice ha-icon { --mdc-icon-size:24px; flex:none; }
 .light-choice.dimmed { opacity:.35; }
-.light-choice.selected { background:var(--light-selected); opacity:1; }
+.light-choice.selected { background:linear-gradient(var(--light-selected),var(--light-selected)),#16191f; box-shadow:inset 0 0 0 2px #f2f4f7; }
 @media(max-width:360px) { .light-steps { width:56px; } .light-body { gap:8px; } .light-body[data-count="3"] .light-value { font-size:24px; } }
 @media(max-height:360px) { :host(.light-sheet) .wrap { overflow-y:auto; } .light-body { flex:none; height:180px; } .light-choices { flex:none; max-height:240px; } }
 `;
@@ -916,8 +916,8 @@ class LightDialog {
       (effects?this.favorites():this.presets()).forEach(item=>{
         const b=document.createElement('button');b.className='light-choice';const selected=effects&&isOn(s)&&s.attributes.effect===item.effect;
         b.classList.toggle('selected',selected);if(effects)b.setAttribute('aria-pressed',String(selected));
-        const dimmed=!available||selected||!(effects?p.effects.includes(item.effect):lightPresetAllowed(s,item));
-        b.classList.toggle('dimmed',dimmed);b.disabled=dimmed||this.busy;
+        const dimmed=!available||!(effects?p.effects.includes(item.effect):lightPresetAllowed(s,item));
+        b.classList.toggle('dimmed',dimmed);b.disabled=dimmed||selected||this.busy;
         const icon=document.createElement('ha-icon');icon.setAttribute('icon',selected?'mdi:check':item.icon||(effects?'mdi:creation':'mdi:lightbulb-outline'));
         const label=document.createElement('span');label.textContent=item.name||item.effect||item.brightness_pct+'%';b.append(icon,label);
         b.onclick=()=>{if(effects){if(this.policy().effects.includes(item.effect))this.send('light','turn_on',{entity_id:this.config.entity,effect:item.effect},true);}else this.preset(item);};
