@@ -1013,6 +1013,8 @@ class LightDialog {
       });
       this.choices.scrollTop=scroll;
     }
+    // Power follows the same live/remembered target as the brightness fill.
+    if (!this.config.accent && this.config.follow_color!==false && (p.caps.color || p.white)) opts.accent=css(readableTint(rgb));
     sheet().update(opts);
   }
 }
