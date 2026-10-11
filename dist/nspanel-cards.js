@@ -726,7 +726,7 @@ const LIGHT_SHEET_CSS = `
 .light-value { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:44px; font-weight:700; font-variant-numeric:tabular-nums; color:#f2f4f7; text-shadow:0 1px 3px rgba(0,0,0,.45),-1px 0 #0b0d10,1px 0 #0b0d10,0 -1px #0b0d10,0 1px #0b0d10; pointer-events:none; }
 .light-body[data-count="3"] .light-value { font-size:32px; }
 .light-value small { font-size:.5em; font-weight:600; }
-.light-marker { position:absolute; width:100%; height:3px; box-shadow:0 1px 4px 1px rgba(0,0,0,.65); pointer-events:none; }
+.light-marker { position:absolute; width:100%; height:3px; box-shadow:0 -1px 4px rgba(0,0,0,.45); pointer-events:none; }
 .light-track.active .light-marker { height:5px; }
 .light-track.dimmed { opacity:.55; }
 .light-steps { display:flex; flex-direction:column; gap:14px; width:96px; flex:none; }
@@ -900,7 +900,7 @@ class LightDialog {
       const fill=node.querySelector('.light-fill');fill.style.height=ch==='brightness'?v*100+'%':'0';fill.style.background=css(rgb);
       node.querySelectorAll('.light-value').forEach(el=>{el.replaceChildren();if(ch==='brightness'){const value=document.createElement('span'),unit=document.createElement('small');value.textContent=Math.round(v*100);unit.textContent='%';value.append(unit);el.append(value);}});
       const marker=node.querySelector('.light-marker'),lineHeight=node.classList.contains('active')?5:3;
-      marker.style.top='clamp(0px, calc('+(1-v)*100+'% - '+lineHeight+'px), calc(100% - '+lineHeight+'px))';
+      marker.style.top='clamp(0px, calc('+(1-v)*100+'% - '+(ch==='brightness'?0:lineHeight)+'px), calc(100% - '+lineHeight+'px))';
     });
     this.buttons.forEach((b,i)=>{b.setAttribute('aria-label',(i===0?'Increase ':'Decrease ')+this.active);
       const dimmed=!available||!channels.includes(this.active)||this.active!=='hue'&&(i===0?values[this.active]>=1:values[this.active]<=0);
