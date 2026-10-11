@@ -564,7 +564,7 @@ class NsSheet extends HTMLElement {
       }
       b.className = 'act' + (a.primary ? ' primary' : '');
       b.disabled = !this._opts.enabled || a.enabled === false;
-      b.style.opacity = b.disabled ? '.35' : '';
+      b.style.opacity = b.disabled && a.dimWhenDisabled !== false ? '.35' : '';
       b.firstChild.setAttribute('icon', a.icon || '');
       b.firstChild.style.display = a.icon ? '' : 'none';
       b.lastChild.textContent = a.label;
@@ -732,15 +732,15 @@ const LIGHT_SHEET_CSS = `
 .light-body[data-count="3"] .light-value { font-size:32px; }
 .light-marker { position:absolute; width:100%; height:4px; background:#f2f4f7; border-top:1px solid #0b0d10; border-bottom:1px solid #0b0d10; pointer-events:none; }
 .light-track.active .light-marker { height:6px; }
-.light-track:disabled { opacity:.55; }
+.light-track.dimmed { opacity:.55; }
 .light-steps { display:flex; flex-direction:column; gap:14px; width:96px; flex:none; }
 .light-steps button { flex:1; border:0; border-radius:18px; background:#16191f; color:#f2f4f7; font-size:34px; min-height:56px; }
-.light-steps button:disabled { opacity:.35; }
+.light-steps button.dimmed { opacity:.35; }
 .light-choices { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); grid-auto-rows:76px; gap:8px; overflow-y:auto; align-content:start; flex:1; min-height:0; }
 .light-choice { display:flex; align-items:center; gap:8px; padding:8px; border:0; border-radius:18px; color:#f2f4f7; background:#16191f; font:600 14px Roboto,system-ui,sans-serif; text-align:left; }
 .light-choice span { overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
 .light-choice ha-icon { --mdc-icon-size:24px; flex:none; }
-.light-choice:disabled { opacity:.35; }
+.light-choice.dimmed { opacity:.35; }
 .light-choice.selected { background:var(--light-selected); opacity:1; }
 @media(max-width:360px) { .light-steps { width:56px; } .light-body { gap:8px; } .light-body[data-count="3"] .light-value { font-size:24px; } }
 @media(max-height:360px) { :host(.light-sheet) .wrap { overflow-y:auto; } .light-body { flex:none; height:180px; } .light-choices { flex:none; max-height:240px; } }
@@ -839,12 +839,12 @@ class LightDialog {
   options() {
     const s=this.state(), p=this.policy(), available=this.available(), on=isOn(s);
     const accent=this.config.accent || (this.config.follow_color!==false && on && Array.isArray(s.attributes.rgb_color)?'rgb('+readableTint(s.attributes.rgb_color).join(',')+')':'#ffb74a');
-    const action=(label,icon,run,enabled=true,primary=false)=>({label,icon,run,enabled,primary,close:false});
+    const action=(label,icon,run,enabled=true,primary=false,dimWhenDisabled=false)=>({label,icon,run,enabled,primary,dimWhenDisabled,close:false});
     const actions=this.page?[action('Back','mdi:arrow-left',()=>this.browse(null))]:[
       ...(p.white&&p.color?[action(this.white?'Colour':'White','mdi:palette',()=>{this.white=!this.white;this.active='brightness';this.render();},!this.drag)]:[]),
       ...(this.presets().length?[action('Presets','mdi:format-list-bulleted',()=>this.browse('Presets'),!this.drag)]:[]),
       ...(this.favorites().length?[action('Effects','mdi:creation',()=>this.browse('Effects'),!this.drag)]:[]),
-      action(on?'Turn off':'Turn on','mdi:power',()=>this.send('light',on?'turn_off':'turn_on',{entity_id:this.config.entity},true),available&&!this.busy&&!this.drag,true),
+      action(on?'Turn off':'Turn on','mdi:power',()=>this.send('light',on?'turn_off':'turn_on',{entity_id:this.config.entity},true),available&&!this.busy&&!this.drag,true,!available),
     ];
     return {title:this.page||this.config.title||this.config.name||friendly(s,this.config.entity),
       state:(available?(on?'On':'Off'):'Unavailable')+(this.error?' · '+this.error:this.page==='Effects'&&s?.attributes.effect?' · '+s.attributes.effect:''),
@@ -892,6 +892,7 @@ class LightDialog {
     const css=c=>'rgb('+c.join(',')+')';this.body.dataset.count=String(channels.length);
     channels.forEach(ch=>{
       const node=this.tracks[ch], v=values[ch];node.disabled=!available||this.busy||!!this.drag&&this.drag!==ch;
+      node.classList.toggle('dimmed',!available);
       node.classList.toggle('active',this.config.step_target==='last_used'&&this.active===ch);
       node.setAttribute('aria-valuetext',ch==='hue'?Math.round(v*360)%360+' degrees':ch==='temperature'?Math.round(p.range[0]+v*(p.range[1]-p.range[0]))+' kelvin':Math.round(v*100)+'%');
       node.setAttribute('aria-valuemin','0');node.setAttribute('aria-valuemax','100');node.setAttribute('aria-valuenow',String(Math.round(v*100)));
@@ -906,7 +907,8 @@ class LightDialog {
       node.querySelector('.light-marker').style.top='clamp(0px, calc('+(1-v)*100+'% - 2px), calc(100% - 6px))';
     });
     this.buttons.forEach((b,i)=>{b.setAttribute('aria-label',(i===0?'Increase ':'Decrease ')+this.active);
-      b.disabled=!available||this.busy||!!this.drag||!channels.includes(this.active)||this.active!=='hue'&&(i===0?values[this.active]>=1:values[this.active]<=0);});
+      const dimmed=!available||!channels.includes(this.active)||this.active!=='hue'&&(i===0?values[this.active]>=1:values[this.active]<=0);
+      b.classList.toggle('dimmed',dimmed);b.disabled=dimmed||this.busy||!!this.drag;});
     if(this.page) {
       const scroll=this.choices.scrollTop;
       this.choices.replaceChildren();this.choices.style.setProperty('--light-selected',tintStops(opts.accent).weak);
@@ -914,7 +916,8 @@ class LightDialog {
       (effects?this.favorites():this.presets()).forEach(item=>{
         const b=document.createElement('button');b.className='light-choice';const selected=effects&&isOn(s)&&s.attributes.effect===item.effect;
         b.classList.toggle('selected',selected);if(effects)b.setAttribute('aria-pressed',String(selected));
-        b.disabled=!available||this.busy||selected||!(effects?p.effects.includes(item.effect):lightPresetAllowed(s,item));
+        const dimmed=!available||selected||!(effects?p.effects.includes(item.effect):lightPresetAllowed(s,item));
+        b.classList.toggle('dimmed',dimmed);b.disabled=dimmed||this.busy;
         const icon=document.createElement('ha-icon');icon.setAttribute('icon',selected?'mdi:check':item.icon||(effects?'mdi:creation':'mdi:lightbulb-outline'));
         const label=document.createElement('span');label.textContent=item.name||item.effect||item.brightness_pct+'%';b.append(icon,label);
         b.onclick=()=>{if(effects){if(this.policy().effects.includes(item.effect))this.send('light','turn_on',{entity_id:this.config.entity,effect:item.effect},true);}else this.preset(item);};
