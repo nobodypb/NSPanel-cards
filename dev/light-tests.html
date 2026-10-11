@@ -348,6 +348,52 @@ async function run() {
   if (['rgb','tw','effects'].includes(preview)) { await mount(colorState('on',preview==='tw'?{color_mode:'color_temp'}:{}),{step_target:'last_used',effect_favorites:favorites}); card._openSheet(); if(preview==='effects')card._lightDialog.browse('Effects'); }
   if (preview === 'sheet') card._openSheet();
   window.lightTestResults = results;
+  for (const disabled of [false,true]) await test(`swapped light actions (disabled details=${disabled})`, async()=>{
+    await mount(state(['color_temp']), {swap_press_actions:true, show_presets:false, long_press_ms:10, long_press:disabled?'none':'sheet'});
+    card._onDown({pointerId:1,clientX:40,clientY:80,button:0}); card._onUp({pointerId:1});
+    assert(!!card._sheetOpen===!disabled && !calls.length,'tap detail routing');
+    if(!disabled) sheet().close();
+    card._onDown({pointerId:2,clientX:40,clientY:80,button:0});await pause();
+    assert(calls.length===1 && calls[0].service==='toggle','hold must toggle once');
+    card._onUp({pointerId:2});assert(calls.length===1 && !card._sheetOpen,'release repeated action');
+  });
+  await test('swapped light cancels safely and reconfiguration cancels pending hold',async()=>{
+    await mount(state(['onoff']),{swap_press_actions:true,long_press_ms:10});
+    card._onDown({pointerId:1,clientX:20,clientY:80,button:0});card._onCancel();await pause();
+    card._onDown({pointerId:2,clientX:20,clientY:80,button:0});card._onMove({pointerId:2,clientX:100,clientY:80});await pause();card._onUp({pointerId:2});
+    assert(!calls.length&&!card._sheetOpen,'cancel/swipe acted');
+    card._onDown({pointerId:3,clientX:20,clientY:80,button:0});
+    card.setConfig({entity:'light.test',swap_press_actions:false,haptics:false});await pause();
+    assert(!calls.length&&!card._sheetOpen,'config reload retained hold');
+    card._onDown({pointerId:4,clientX:20,clientY:80,button:0});card._onUp({pointerId:4});assert(calls.length===1,'reload did not restore normal tap');
+    setState(state(['onoff'],'unavailable'));await pause();calls.length=0;
+    card._onDown({pointerId:5,clientX:20,clientY:80,button:0});await pause();card._onUp({pointerId:5});
+    assert(!calls.length,'unavailable acted');
+  });
+  await test('three-column light layout preserves full labels and values',async()=>{
+    fixture.style.width='144px';
+    for (const value of ['on','off','unavailable']) {
+      await mount(state(['color_temp'],value,{brightness:255}),{title:'Haubenlicht',height:216,show_presets:false});
+      await pause();
+      const rect=card._card.getBoundingClientRect(), name=card._elName.getBoundingClientRect();
+      assert(rect.width===144&&rect.height===216,'wrong card size');
+      assert(card._elName.scrollHeight<=card._elName.clientHeight,'clipped title');
+      assert(name.right<=rect.right&&name.bottom<=rect.bottom,'title out of bounds');
+      if(value==='on') {
+        const icon=card._elIcon.parentElement.getBoundingClientRect(),number=card._elValue.getBoundingClientRect();
+        assert(number.top>=icon.bottom&&number.right<=rect.right,'100 percent overlaps icon or card edge');
+        assert(number.bottom<=name.top,'value overlaps title');
+      }
+    }
+    fixture.style.width='480px';
+  });
+  await test('light editor preserves swap option',()=>{
+    assert(LIGHT_SCHEMA.some(r=>r.name==='swap_press_actions'),'missing light option');
+    const editor=customElements.get('nspanel-light-card').getConfigElement();
+    editor.setConfig({type:'custom:nspanel-light-card',entity:'light.test',swap_press_actions:true});
+    editor._valueChanged({stopPropagation(){},detail:{value:{title:'Changed'}}});
+    assert(editor._config.swap_press_actions===true,'swap option lost');
+  });
   document.querySelector('#result').textContent = JSON.stringify(results, null, 2);
   document.documentElement.dataset.testStatus = results.every((r) => r.passed) ? 'passed' : 'failed';
   if (preview) document.querySelector('#result').style.display = 'none';

@@ -84,6 +84,44 @@ async function run() {
     assert(editor._config.title === 'Updated', 'editor change was not applied');
     assert(editor._config.detail_entity === 'light.detail' && editor._config.switches[0].detail_entity === 'sensor.detail', 'editor dropped target');
   });
+  const pointer=(el,type,x=30,y=40,id=1)=>el.dispatchEvent(new PointerEvent(type,{bubbles:true,pointerId:id,isPrimary:true,button:0,clientX:x,clientY:y}));
+  const click=(el)=>el.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,detail:1}));
+  for(const override of [undefined,false,true]) await test(`pointer swap and item override ${override}`,async()=>{
+    await mount({swap_press_actions:true,switches:[{entity:'switch.primary',detail_entity:'sensor.detail',...(override===undefined?{}:{swap_press_actions:override})}]});
+    const swap=override??true,el=card.shadowRoot.querySelector('.btn');
+    pointer(el,'pointerdown');pointer(el,'pointerup');click(el);
+    assert(swap?opened.join()==='sensor.detail'&&!calls.length:calls.length===1&&!opened.length,'short action or generated click');
+    calls.length=0;opened.length=0;
+    pointer(el,'pointerdown');await new Promise(r=>setTimeout(r,550));
+    pointer(el,'pointerup');click(el);
+    assert(swap?calls.length===1&&calls[0].data.entity_id==='switch.primary'&&!opened.length:opened.join()==='sensor.detail'&&!calls.length,'hold action doubled or misrouted');
+  });
+  await test('switch movement, cancellation and reconfigure stop holds',async()=>{
+    await mount({entity:'switch.primary',swap_press_actions:true});let el=card.shadowRoot.querySelector('.btn');
+    pointer(el,'pointerdown');pointer(el,'pointermove',80);pointer(el,'pointerup',80);click(el);
+    pointer(el,'pointerdown');pointer(el,'pointercancel');click(el);
+    pointer(el,'pointerdown');card.setConfig({entity:'switch.primary',swap_press_actions:false,haptics:false});
+    await new Promise(r=>setTimeout(r,550));assert(!calls.length&&!opened.length,'cancelled gesture acted');
+    el=card.shadowRoot.querySelector('.btn');pointer(el,'pointerdown');pointer(el,'pointerup');click(el);
+    assert(calls.length===1,'new binding or duplicate click');
+  });
+  await test('swapped switch disabled details and live unavailable guard',async()=>{
+    await mount({entity:'switch.primary',swap_press_actions:true,more_info:false});const el=card.shadowRoot.querySelector('.btn');
+    el.click();assert(!calls.length&&!opened.length,'disabled short detail acted');
+    pointer(el,'pointerdown');await new Promise(r=>setTimeout(r,550));pointer(el,'pointerup');click(el);
+    assert(calls.length===1,'disabled details blocked power');calls.length=0;
+    pointer(el,'pointerdown');card.hass={...card._hass,states:{'switch.primary':{entity_id:'switch.primary',state:'unavailable',attributes:{}}}};
+    await new Promise(r=>setTimeout(r,550));pointer(el,'pointerup');click(el);el.click();
+    assert(!calls.length&&!opened.length,'became unavailable during hold');
+  });
+  await test('switch editor card and entry swap survive edits',()=>{
+    assert(SWITCH_SCHEMA.some(r=>r.name==='swap_press_actions'),'card field missing');
+    assert(SWITCH_SCHEMA.find(r=>r.name==='switches').selector.object.fields.swap_press_actions,'entry field missing');
+    const editor=customElements.get('nspanel-switch-card').getConfigElement();
+    editor.setConfig({type:'custom:nspanel-switch-card',swap_press_actions:true,switches:[{entity:'switch.primary',swap_press_actions:false}]});
+    editor._valueChanged({stopPropagation(){},detail:{value:{title:'Changed'}}});
+    assert(editor._config.swap_press_actions===true&&editor._config.switches[0].swap_press_actions===false,'editor lost swap overrides');
+  });
   document.querySelector('#result').textContent = JSON.stringify(results, null, 2);
   document.documentElement.dataset.testStatus = results.every((r) => r.passed) ? 'passed' : 'failed';
 }
