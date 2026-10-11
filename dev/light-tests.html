@@ -192,6 +192,7 @@ async function run() {
   const favorites=[{effect:'Solid'},{effect:'Rainbow',name:'Regenbogen'},{effect:'Missing'}];
   const details=async(config={},s=colorState())=>{await mount(s,config);card._openSheet();return card._lightDialog;};
   const last=()=>calls[calls.length-1];
+  const stableOpacity=()=>assert([...sheet().shadowRoot.querySelectorAll('.light-track,.light-steps button,.act')].every(n=>getComputedStyle(n).opacity==='1'),'temporary lock faded a control');
   await test('brightness default, single property, normalized last-used steps and reset',async()=>{
     let d=await details();await d.commit('hue',.75);d.step(1);await pause();
     assert(last().data.brightness_pct===55,'default target changed');
@@ -210,6 +211,7 @@ async function run() {
     n.dispatchEvent(new PointerEvent('pointerdown',{pointerId:42,button:0,clientY:r.top+r.height*.5}));
     n.dispatchEvent(new PointerEvent('pointermove',{pointerId:42,clientY:r.top+r.height*.2}));
     assert(!calls.length && d.values().hue>.7,'preview should be local');
+    assert(d.tracks.brightness.disabled,'other track input guard');stableOpacity();
     n.dispatchEvent(new PointerEvent('pointercancel',{pointerId:42}));assert(!calls.length&&d.active==='brightness','cancel');
     n.dispatchEvent(new PointerEvent('pointerdown',{pointerId:43,button:0,clientY:r.top+r.height*.25}));
     n.dispatchEvent(new PointerEvent('pointerup',{pointerId:43,clientY:r.top+r.height*.25}));await pause();
@@ -218,7 +220,7 @@ async function run() {
   await test('pending locks controls and rejection rolls back',async()=>{
     const d=await details();let reject;
     card._hass.callService=(domain,service,data)=>{calls.push({domain,service,data});return new Promise((_,r)=>reject=r);};
-    const pending=d.commit('hue',.75);assert(d.tracks.hue.disabled,'pending input');d.step(1);assert(calls.length===1,'duplicate');
+    const pending=d.commit('hue',.75);assert(d.tracks.hue.disabled,'pending input');d.step(1);assert(calls.length===1,'duplicate');stableOpacity();
     reject(new Error('test'));await pending;
     assert(d.error==='Command failed' && d.values().hue===.5 && !d.tracks.hue.disabled,'rollback');
   });
@@ -244,7 +246,7 @@ async function run() {
   await test('connectivity-only changes disable dialog and color capability loss falls back',async()=>{
     const d=await details({step_target:'last_used'});await d.commit('hue',.75);
     setState(state(['brightness']));await pause();assert(d.active==='brightness'&&!d.tracks.hue,'capability loss');
-    card.hass={...card.hass,connection:{connected:false}};await pause();assert(d.tracks.brightness.disabled,'connection update skipped');
+    card.hass={...card.hass,connection:{connected:false}};await pause();assert(d.tracks.brightness.disabled,'connection update skipped');assert(getComputedStyle(d.tracks.brightness).opacity==='.55'||getComputedStyle(d.tracks.brightness).opacity==='0.55','unavailable state lost its visual cue');
     const before=calls.length;d.step(1);assert(calls.length===before,'offline request');
   });
   await test('white target survives brightness preview',async()=>{
