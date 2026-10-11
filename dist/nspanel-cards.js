@@ -673,9 +673,88 @@ function lightPresetAllowed(s, p) {
   return true;
 }
 
+/* Last confirmed values are display fallbacks, never a replacement HA state. */
+class LightMemory {
+  constructor(key, storage) {
+    this.key=key; this.storage=storage; this.lights=new Map(); this.timer=null; this.dirty=false; this.lastStates=null;
+    try { if(this.storage===undefined)this.storage=localStorage; this.restore(this.storage?.getItem(key)); } catch(_) { this.storage=null; }
+  }
+  static valid(a={}) {
+    const r={}, number=(v,lo,hi)=>typeof v==='number'&&Number.isFinite(v)&&v>=lo&&v<=hi;
+    if(number(a.brightness,1,255))r.brightness=a.brightness;
+    if(['brightness','color_temp','hs','rgb','rgbw','rgbww','xy','white'].includes(a.color_mode))r.color_mode=a.color_mode;
+    if(Array.isArray(a.hs_color)&&a.hs_color.length===2&&number(a.hs_color[0],0,360)&&number(a.hs_color[1],0,100))r.hs_color=a.hs_color.slice();
+    else if(Array.isArray(a.rgb_color)&&a.rgb_color.length>=3&&a.rgb_color.slice(0,3).every(v=>number(v,0,255)))r.rgb_color=a.rgb_color.slice(0,3);
+    if(number(a.color_temp_kelvin,1,1e6))r.color_temp_kelvin=a.color_temp_kelvin;
+    else if(number(a.color_temp,1,1e6))r.color_temp_kelvin=1e6/a.color_temp;
+    if(typeof a.effect==='string'&&a.effect.length>0&&a.effect.length<=256)r.effect=a.effect;
+    return r;
+  }
+  static merge(old,fresh) {
+    const r={...old};
+    if(fresh.hs_color||fresh.rgb_color){delete r.hs_color;delete r.rgb_color;}
+    return Object.assign(r,fresh);
+  }
+  restore(raw) {
+    try {
+      const data=JSON.parse(raw);
+      if(data?.version!==1||!data.lights||typeof data.lights!=='object'||Array.isArray(data.lights))return;
+      Object.entries(data.lights).forEach(([id,a])=>{if(!id.startsWith('light.')||!a||typeof a!=='object')return;const v=LightMemory.valid(a);if(Object.keys(v).length&&!this.lights.has(id))this.lights.set(id,v);});
+      this.trim();
+    } catch(_) { /* Corrupt or unavailable storage is harmless. */ }
+  }
+  trim() { while(this.lights.size>128)this.lights.delete(this.lights.keys().next().value); }
+  encode() { return JSON.stringify({version:1,lights:Object.fromEntries(this.lights)}); }
+  changed() {
+    this.dirty=true;
+    if(this.storage&&this.timer===null)this.timer=setTimeout(()=>this.flush(),2000);
+  }
+  observe(id,s) {
+    if(!id.startsWith('light.'))return;
+    if(!s){if(this.lights.delete(id))this.changed();return;}
+    if(s.state==='off'){this.flush();return;}
+    if(s.state!=='on')return;
+    const fresh=LightMemory.valid(s.attributes);
+    if(!Object.keys(fresh).length)return;
+    const next=LightMemory.valid(LightMemory.merge(this.lights.get(id)||{},fresh));
+    if(JSON.stringify(next)===JSON.stringify(this.lights.get(id)))return;
+    this.lights.delete(id);this.lights.set(id,next);this.trim();this.changed();
+  }
+  observeHass(hass) {
+    const states=hass?.states;if(!states||states===this.lastStates)return;
+    const previous=this.lastStates;this.lastStates=states;
+    Object.entries(states).forEach(([id,s])=>{if(!previous||previous[id]!==s)this.observe(id,s);});
+    if(previous)Object.keys(previous).forEach(id=>{if(!(id in states))this.observe(id,null);});
+  }
+  resolve(id,s) {
+    const a=s?.attributes||{};if(s?.state!=='off')return a;
+    const values=LightMemory.merge(this.lights.get(id)||{},LightMemory.valid(a)),r={...a};
+    if(values.hs_color||values.rgb_color){delete r.hs_color;delete r.rgb_color;}
+    return Object.assign(r,values);
+  }
+  hasLastValues(id,s) { return s?.state==='off'&&Object.keys(LightMemory.valid(this.resolve(id,s))).some(k=>k!=='color_mode'); }
+  flush() {
+    clearTimeout(this.timer);this.timer=null;if(!this.dirty||!this.storage)return;
+    try{this.storage.setItem(this.key,this.encode());this.dirty=false;}catch(_){/* Keep working in memory when storage is full/blocked. */}
+  }
+}
+const lightMemories=new Map();
+function lightMemory(hass) {
+  let origin=location.origin;
+  try {
+    const u=new URL(hass?.hassUrl||hass?.connection?.options?.auth?.hassUrl||hass?.connection?._url||origin,location.href);
+    if(u.protocol==='ws:')u.protocol='http:';if(u.protocol==='wss:')u.protocol='https:';origin=u.origin;
+  } catch(_) { /* Same-origin HA frontend. */ }
+  const key='nspanel.light-last-values.v1:'+origin;
+  if(!lightMemories.has(key))lightMemories.set(key,new LightMemory(key));
+  const memory=lightMemories.get(key);memory.observeHass(hass);return memory;
+}
+window.addEventListener('pagehide',()=>lightMemories.forEach(m=>m.flush()));
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')lightMemories.forEach(m=>m.flush());});
+
 /* Light dialog policy shared by the light card and shortcut detail targets. */
-function lightColorPolicy(s) {
-  const a = s && s.attributes || {}, caps = lightCapabilities(s);
+function lightColorPolicy(s, attributes, lastValues=false) {
+  const a = attributes || s && s.attributes || {}, caps = lightCapabilities(s);
   const num = (key) => typeof a[key] === 'number' && Number.isFinite(a[key]) ? a[key] : null;
   let min = num('min_color_temp_kelvin'), max = num('max_color_temp_kelvin');
   if (min === null || max === null) {
@@ -695,7 +774,7 @@ function lightColorPolicy(s) {
   const temperature = num('color_temp_kelvin') || (num('color_temp') > 0 ? 1e6/num('color_temp') : range ? (range[0]+range[1])/2 : 0);
   return { caps, range, color, white: !!white,
     effects: (a.supported_features & 4) && Array.isArray(a.effect_list) ? a.effect_list.filter(v => typeof v === 'string') : [],
-    values: { brightness: isOn(s) ? clamp((num('brightness') === null ? 255 : num('brightness'))/255,0,1) : 0,
+    values: { brightness: isOn(s) ? clamp((num('brightness') === null ? 255 : num('brightness'))/255,0,1) : lastValues&&s?.state==='off'?clamp((num('brightness')||0)/255,0,1):0,
       hue: ((hs[0]%360)+360)%360/360, saturation: clamp(hs[1]/100,0,1),
       temperature: range ? clamp((temperature-range[0])/(range[1]-range[0]),0,1) : .5 },
   };
@@ -747,16 +826,20 @@ class LightDialog {
     this.active = 'brightness'; this.echo = {}; this.draft = {}; this.timers = {};
     this.busy = false; this.alive = true; this.generation = 0; this.drag = null; this.page = null; this.error = null;
     const p = this.policy();
-    this.white = p.white && (this.state()?.attributes.color_mode === 'color_temp' || !p.color);
+    this.lastState=this.state()?.state;
+    this.white = p.white && (this.attributes().color_mode === 'color_temp' || !p.color);
     this.body = document.createElement('div'); this.body.className = 'light-body';
     this.choices = document.createElement('div'); this.choices.className = 'light-choices';
-    if (Number.isFinite(initial) && initial !== p.values.brightness) this.hold('brightness', initial);
+    if (isOn(this.state()) && Number.isFinite(initial) && initial !== p.values.brightness) this.hold('brightness', initial);
     owner._sheetOpen = true;
     sheet().open(this.options());
     this.render();
   }
   state() { return this.owner._hass && this.owner._hass.states[this.config.entity]; }
-  policy() { return lightColorPolicy(this.state()); }
+  memory() { return lightMemory(this.owner._hass); }
+  attributes() { return this.memory().resolve(this.config.entity,this.state()); }
+  hasLastValues() { return this.policy().caps.brightness && this.memory().hasLastValues(this.config.entity,this.state()); }
+  policy() { return lightColorPolicy(this.state(),this.attributes(),true); }
   available() { return this.policy().caps.available && this.owner._hass?.connection?.connected !== false; }
   favorites() { return Array.isArray(this.config.effect_favorites) ? this.config.effect_favorites.filter(p => p && typeof p.effect==='string' && p.effect) : []; }
   presets() { return Array.isArray(this.config.presets) ? this.config.presets : this.policy().caps.brightness ?
@@ -811,11 +894,11 @@ class LightDialog {
     const ok=await this.send('light',service,data);
     if(!this.alive || generation!==this.generation)return;
     if(ok) {
-      this.hold(ch,v);
+      if(!(ch==='brightness'&&v===0&&this.state()?.state==='off'))this.hold(ch,v);
       if(ch==='hue'||ch==='saturation'){this.hold('hue',values.hue);this.hold('saturation',values.saturation);}
     } else { clearTimeout(this.timers[ch]);delete this.echo[ch]; }
     if(ch==='brightness' && this.owner instanceof NsPanelLightCard) {
-      this.owner._local=ok?v:this.policy().values.brightness;
+      this.owner._local=ok?v:lightColorPolicy(this.state()).values.brightness;
       this.owner._localUntil=Date.now()+(this.config.echo_ms??1500);this.owner._scheduleRender();
     }
     this.render();
@@ -843,7 +926,7 @@ class LightDialog {
       action(on?'Turn off':'Turn on','mdi:power',()=>this.send('light',on?'turn_off':'turn_on',{entity_id:this.config.entity},true),available&&!this.busy&&!this.drag,true,!available),
     ];
     return {title:this.page||this.config.title||this.config.name||friendly(s,this.config.entity),
-      state:(available?(on?'On':'Off'):'Unavailable')+(this.error?' · '+this.error:this.page==='Effects'&&s?.attributes.effect?' · '+s.attributes.effect:''),
+      state:(available?(on?'On':this.hasLastValues()?'Off · last values':'Off'):'Unavailable')+(this.error?' · '+this.error:this.page==='Effects'&&this.attributes().effect?' · '+this.attributes().effect:''),
       stateColor:this.error?'#f87171':null,accent,value:0,showLevel:false,enabled:true,actions,
       lightBody:this.page?this.choices:this.channels().length?this.body:null,
       lightDialog:true,onClose:()=>this.close()};
@@ -872,6 +955,10 @@ class LightDialog {
   }
   render() {
     if(!this.alive)return;
+    if(this.lastState!==this.state()?.state){
+      this.lastState=this.state()?.state;this.drag=null;this.draft={};this.echo={};Object.values(this.timers).forEach(clearTimeout);
+      const p=this.policy();this.white=p.white&&(this.attributes().color_mode==='color_temp'||!p.color);
+    }
     const p=this.policy(), channels=this.channels(), available=this.available();
     if(!available || this.drag&&!channels.includes(this.drag)) {
       this.drag=null;this.draft={};this.echo={};Object.values(this.timers).forEach(clearTimeout);
@@ -882,7 +969,7 @@ class LightDialog {
     const values=this.values(), s=this.state(), opts=this.options();
     let rgb=[255,183,74];
     const preview=(this.drag==='brightness'?null:this.drag) || (this.echo.temperature!==undefined?'temperature':this.echo.hue!==undefined||this.echo.saturation!==undefined?'hue':null);
-    if(p.range && (preview==='temperature'||!preview&&s?.attributes.color_mode==='color_temp'||p.white&&!p.color))rgb=lightKelvin(p.range[0]+values.temperature*(p.range[1]-p.range[0]));
+    if(p.white && p.range && (preview==='temperature'||!preview&&this.attributes().color_mode==='color_temp'||p.white&&!p.color))rgb=lightKelvin(p.range[0]+values.temperature*(p.range[1]-p.range[0]));
     else if(p.caps.color)rgb=lightRgb(values.hue,values.saturation);
     else if(/^#[\da-f]{6}$/i.test(opts.accent))rgb=opts.accent.slice(1).match(/../g).map(v=>parseInt(v,16));
     const css=c=>'rgb('+c.join(',')+')';this.body.dataset.count=String(channels.length);
@@ -910,10 +997,10 @@ class LightDialog {
       this.choices.replaceChildren();this.choices.style.setProperty('--light-selected',tintStops(opts.accent).weak);
       const effects=this.page==='Effects';
       (effects?this.favorites():this.presets()).forEach(item=>{
-        const b=document.createElement('button');b.className='light-choice';const selected=effects&&isOn(s)&&s.attributes.effect===item.effect;
+        const b=document.createElement('button');b.className='light-choice';const selected=effects&&(isOn(s)||this.hasLastValues())&&this.attributes().effect===item.effect;
         b.classList.toggle('selected',selected);if(effects)b.setAttribute('aria-pressed',String(selected));
         const dimmed=!available||!(effects?p.effects.includes(item.effect):lightPresetAllowed(s,item));
-        b.classList.toggle('dimmed',dimmed);b.disabled=dimmed||selected||this.busy;
+        b.classList.toggle('dimmed',dimmed);b.disabled=dimmed||(selected&&isOn(s))||this.busy;
         const icon=document.createElement('ha-icon');icon.setAttribute('icon',selected?'mdi:check':item.icon||(effects?'mdi:creation':'mdi:lightbulb-outline'));
         const label=document.createElement('span');label.textContent=item.name||item.effect||item.brightness_pct+'%';b.append(icon,label);
         b.onclick=()=>{if(effects){if(this.policy().effects.includes(item.effect))this.send('light','turn_on',{entity_id:this.config.entity,effect:item.effect},true);}else this.preset(item);};
@@ -984,6 +1071,7 @@ class NsBaseCard extends HTMLElement {
   set hass(hass) {
     const prev = this._hass;
     this._hass = hass;
+    lightMemory(hass);
     if (!this._config) return;
     // Diff down to the one entity we care about. HA pushes a new hass object on
     // every state change in the house; on this hardware that is the difference
@@ -1859,6 +1947,7 @@ class NsInfoCard extends HTMLElement {
   set hass(hass) {
     const prev = this._hass;
     this._hass = hass;
+    lightMemory(hass);
     if (!this._config) return;
     this._afterHass(prev);
     if (prev) {

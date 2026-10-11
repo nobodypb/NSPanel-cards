@@ -276,6 +276,56 @@ async function run() {
     const items=SWITCH_SCHEMA.find(r=>r.name==='switches');assert(JSON.stringify(items).includes('effect_favorites'),'item schema');
   });
 
+
+  await test('last values are confirmed state only; off details and tiles stay separate',async()=>{
+    const d=await details({effect_favorites:favorites});
+    setState(colorState('off',{brightness:null,hs_color:null,rgb_color:null,color_mode:null,color_temp_kelvin:null,effect:null}));await pause();
+    assert(d.values().brightness===128/255&&d.values().hue===.5,'last levels missing');
+    assert(sheet()._state.textContent==='Off · last values','history label missing');
+    assert(!card._card.classList.contains('on')&&card._card.style.getPropertyValue('--ns-fill')==='0','off tile appears on');
+    d.browse('Effects');const selected=d.choices.children[0];assert(selected.classList.contains('selected')&&!selected.disabled,'last effect cannot be used to switch on');
+    d.browse(null);assert(calls.length===0,'opening history actuated light');
+    sheet()._actions.lastChild.click();await pause();
+    assert(last().service==='turn_on'&&Object.keys(last().data).join(',')==='entity_id','power restored cached parameters');
+  });
+  await test('off rejection and service acknowledgement never become remembered state',async()=>{
+    const d=await details();setState(colorState('off',{brightness:null}));await pause();
+    const memory=d.memory(),before=memory.encode();
+    card.hass={...card.hass,callService:()=>Promise.reject(Error('refused'))};await d.commit('brightness',.8);
+    assert(d.values().brightness===128/255&&memory.encode()===before,'rejected value remembered');
+    card.hass={...card.hass,callService:()=>Promise.resolve()};await d.commit('brightness',.8);
+    assert(memory.encode()===before,'acknowledgement learned optimistic value');
+    d.drag='hue';d.draft={hue:.1};d.render();assert(memory.encode()===before,'draft learned');d.drag=null;d.draft={};
+  });
+  await test('last temperature mode survives missing off attributes and capabilities remain live',async()=>{
+    const d=await details({},colorState('on',{color_mode:'color_temp',color_temp_kelvin:4000}));
+    setState(colorState('off',{brightness:null,hs_color:null,color_mode:null,color_temp_kelvin:null}));await pause();
+    assert(d.channels()[0]==='temperature'&&Math.abs(d.values().temperature-2000/4500)<.00001,'temperature mode lost');
+    setState(state(['onoff'],'off',{brightness:null}));await pause();assert(d.channels().length===0,'cached capabilities resurrected');
+    setState(state(['rgb'],'unavailable'));await pause();assert(!d.available(),'history hides unavailable');
+  });
+  await test('light memory storage restart, batching, origin isolation and corruption',()=>{
+    const data=new Map(),storage={getItem:k=>data.get(k)||null,setItem:(k,v)=>data.set(k,v)};
+    const m=new LightMemory('one',storage);m.observe('light.test',colorState());m.observe('light.test',colorState('on',{brightness:180}));
+    assert(data.size===0,'writes not batched');m.observe('light.test',colorState('off',{brightness:0}));
+    const restarted=new LightMemory('one',storage);assert(restarted.resolve('light.test',colorState('off',{brightness:null})).brightness===180,'restart lost state');
+    assert(new LightMemory('two',storage).lights.size===0,'origin leak');
+    data.set('bad','{bad');assert(new LightMemory('bad',storage).lights.size===0,'corruption fatal');
+    data.set('future',JSON.stringify({version:2,lights:{'light.test':attrs}}));assert(new LightMemory('future',storage).lights.size===0,'unknown version accepted');
+    const blocked=new LightMemory('blocked',{getItem(){throw Error('blocked')},setItem(){throw Error('blocked')}});blocked.observe('light.test',colorState());blocked.flush();assert(blocked.resolve('light.test',colorState('off',{brightness:null})).brightness===128,'blocked storage lost session memory');
+  });
+  await test('live RGB wins over cached HS; null, zero and invalid attributes cannot poison memory',()=>{
+    const m=new LightMemory('validation',null);m.observe('light.test',colorState());
+    m.observe('light.test',colorState('on',{brightness:0,hs_color:[NaN,40],color_temp_kelvin:-4}));
+    const a=m.resolve('light.test',state(['rgb'],'off',{brightness:null,hs_color:null,rgb_color:[255,0,0],color_temp:250,color_temp_kelvin:null}));
+    assert(a.brightness===128&&!a.hs_color&&a.rgb_color[0]===255&&a.color_temp_kelvin===4000,'live/fallback precedence');
+    m.observe('light.test',state(['rgb'],'unavailable',{brightness:42}));assert(m.resolve('light.test',state(['rgb'],'off',{brightness:null})).brightness===128,'unavailable poisoned memory');
+    m.observe('light.test',null);assert(m.lights.size===0,'deleted entity retained');
+  });
+  await test('light memory stays bounded and keeps entity IDs isolated',()=>{
+    const m=new LightMemory('bounded',null);for(let i=0;i<140;i++)m.observe('light.'+i,state(['brightness'],'on',{brightness:i+1}));
+    assert(m.lights.size===128&&!m.lights.has('light.0')&&m.lights.get('light.139').brightness===140,'bound or entity isolation');
+  });
   await mount(state(['onoff']));
   const preview = new URLSearchParams(location.search).get('preview');
   if (preview === 'dimmer') { await mount(state(['brightness'])); card._openSheet(); }
