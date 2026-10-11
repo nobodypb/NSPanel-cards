@@ -731,8 +731,9 @@ const LIGHT_SHEET_CSS = `
 .light-body { display:flex; gap:14px; flex:1; min-height:56px; }
 .light-track { position:relative; flex:1; min-width:0; min-height:56px; padding:0; border:0; border-radius:20px; overflow:hidden; background:#16191f; touch-action:none; }
 .light-fill { position:absolute; bottom:0; left:0; width:100%; pointer-events:none; }
-.light-value { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:44px; font-weight:700; font-variant-numeric:tabular-nums; color:#f2f4f7; pointer-events:none; }
+.light-value { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:44px; font-weight:700; font-variant-numeric:tabular-nums; color:#f2f4f7; text-shadow:0 1px 3px rgba(0,0,0,.45),-1px 0 #0b0d10,1px 0 #0b0d10,0 -1px #0b0d10,0 1px #0b0d10; pointer-events:none; }
 .light-body[data-count="3"] .light-value { font-size:32px; }
+.light-value small { font-size:.5em; font-weight:600; }
 .light-marker { position:absolute; width:100%; height:3px; pointer-events:none; }
 .light-track.active .light-marker { height:5px; }
 .light-track.dimmed { opacity:.55; }
@@ -859,7 +860,7 @@ class LightDialog {
     this.layout=channels.join(','); this.body.replaceChildren(); this.tracks={};
     channels.forEach(ch=>{
       const node=document.createElement('button');node.className='light-track';node.setAttribute('aria-label',ch);node.setAttribute('role','slider');
-      node.innerHTML='<div class="light-fill"></div><div class="light-marker"></div><div class="light-value"></div><div class="light-value filled"></div>';
+      node.innerHTML='<div class="light-fill"></div><div class="light-marker"></div><div class="light-value"></div>';
       const at=e=>{const r=node.getBoundingClientRect();return clamp(1-(e.clientY-r.top)/r.height,0,1);};
       node.addEventListener('pointerdown',e=>{
         if(e.button!==0 || this.drag || node.disabled)return;
@@ -905,16 +906,14 @@ class LightDialog {
       if(ch==='temperature')gradient='linear-gradient(to top,'+Array.from({length:9},(_,i)=>css(lightKelvin(p.range[0]+(p.range[1]-p.range[0])*i/8))).join(',')+')';
       node.style.background=gradient||'#16191f';
       const fill=node.querySelector('.light-fill');fill.style.height=ch==='brightness'?v*100+'%':'0';fill.style.background=css(rgb);
-      node.querySelectorAll('.light-value').forEach(el=>{el.textContent=ch==='brightness'?Math.round(v*100)+'%':'';});
-      const filled=node.querySelector('.filled');filled.style.color=lightInk(rgb);filled.style.clipPath='inset('+(1-v)*100+'% 0 0 0)';
+      node.querySelectorAll('.light-value').forEach(el=>{el.replaceChildren();if(ch==='brightness'){const value=document.createElement('span'),unit=document.createElement('small');value.textContent=Math.round(v*100);unit.textContent='%';value.append(unit);el.append(value);}});
       const marker=node.querySelector('.light-marker'),lineHeight=node.classList.contains('active')?5:3;
       let background=v===1?rgb:[22,25,31];
       if(ch==='hue')background=lightRgb(v,1);
       if(ch==='saturation')background=lightRgb(values.hue,v);
       if(ch==='temperature')background=lightKelvin(p.range[0]+v*(p.range[1]-p.range[0]));
       const contrast=(a,b)=>{const x=lightLuminance(a),y=lightLuminance(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05);};
-      const accent=/^#[\da-f]{6}$/i.test(opts.accent)?opts.accent.slice(1).match(/../g).map(v=>parseInt(v,16)):[255,183,74];
-      marker.style.background=contrast(accent,background)>=3?css(accent):lightInk(background);
+      marker.style.background=contrast(rgb,background)>=3?css(rgb):lightInk(background);
       marker.style.top='clamp(0px, calc('+(1-v)*100+'% - '+lineHeight+'px), calc(100% - '+lineHeight+'px))';
     });
     this.buttons.forEach((b,i)=>{b.setAttribute('aria-label',(i===0?'Increase ':'Decrease ')+this.active);
