@@ -1064,7 +1064,7 @@ inspection, run `python3 dev/serve.py` and open `/dev/light-tests.html?preview=s
 Long-press a light card or a switch tile whose `detail_entity` is a light to open
 its shared light dialog. Dimmable, tunable-white and colour lights use the same
 layout: tall unlabelled tracks, brightness on the right, then large +/− buttons.
-Horizontal lines mark positions. Only brightness shows a percentage; temperature
+Horizontal shadow markers show positions. Only brightness shows a percentage; temperature
 and hue/saturation remain available to accessibility tools without visible scales.
 The brightness fill previews the target colour. Card and action accents continue
 to follow `accent` / `follow_color`.
@@ -1084,7 +1084,7 @@ effect_favorites:
 
 `step_target: brightness` always adjusts brightness. With `last_used`, +/− starts
 with brightness each time the dialog opens, then follows the last completed
-slider interaction. Its thicker position line identifies that slider. Cancelled
+slider interaction. Its thicker position marker identifies that slider. Cancelled
 gestures and external HA updates do not select a target. Returning from presets
 or effects preserves it; changing colour mode or losing a capability resets to
 brightness. `step` is a percentage of the channel range (default 5: brightness /
@@ -1135,3 +1135,20 @@ seconds and flushed when an off update arrives. Storage failure falls back to
 session memory. Each client remembers what it has observed itself; changes while
 it was absent cannot be recovered from missing off attributes. No history API,
 background polling, new dependency or HA helper is required.
+
+### Preview
+
+Actual browser captures at 480×480 using simulated lights. No Home Assistant
+connection is needed: run `python3 dev/serve.py` and open
+`dev/light-preview.html?mode=rgb` (`dimmer` and `tw` are also available).
+
+| Dimmer | Tunable white | RGB / last-used slider |
+| --- | --- | --- |
+| ![Dimmer with a 50% brightness fill](docs/images/light-controls/dimmer.png) | ![Tunable-white gradient and matching brightness fill](docs/images/light-controls/tw.png) | ![RGB sliders with the hue slider selected for plus/minus](docs/images/light-controls/rgb.png) |
+
+| Effect favourites | Last values while off |
+| --- | --- |
+| ![Rainbow selected in the effect chooser](docs/images/light-controls/effects.png) | ![RGB details showing Off · last values after a browser reload](docs/images/light-controls/last-values.png) |
+
+With `last_used`, plus/minus starts on brightness each time the dialog opens,
+then follows the last completed slider interaction.
