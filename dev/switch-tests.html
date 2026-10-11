@@ -122,6 +122,30 @@ async function run() {
     editor._valueChanged({stopPropagation(){},detail:{value:{title:'Changed'}}});
     assert(editor._config.swap_press_actions===true&&editor._config.switches[0].swap_press_actions===false,'editor lost swap overrides');
   });
+  await test('ten grouped sockets fit, show circuits and keep independent actions', async () => {
+    const groups = [
+      {name:'Essen', first:1, count:4}, {name:'Küche', first:5, count:2},
+      {name:'Wohnen', first:7, count:4},
+    ].map(({name,first,count}) => ({name, switches:Array.from({length:count},(_,j) => {
+      const n=first+j; return {entity:'switch.socket'+n,name:'Dose '+n,circuit:'P'+n+' · SW'};
+    })}));
+    await mount({height:442,groups,on_text:'An',off_text:'Aus'});
+    card.hass = {...card._hass, states:Object.fromEntries(Array.from({length:10},(_,j) => {
+      const id='switch.socket'+(j+1);return [id,{entity_id:id,state:'off',attributes:{}}];
+    }))};
+    await pause();
+    const buttons=[...card.shadowRoot.querySelectorAll('.btn.socket')];
+    assert(buttons.length===10 && card.shadowRoot.querySelectorAll('.socket-heading').length===3,'missing sockets or room headings');
+    assert(buttons[9].querySelector('.bl').textContent==='Dose 10' &&
+      buttons[9].querySelector('.socket-circuit').textContent==='P10 · SW','name/circuit hierarchy missing');
+    assert(buttons.every(b=>b.getBoundingClientRect().height>=56),'socket targets too short');
+    assert(buttons[9].getBoundingClientRect().bottom<=card.getBoundingClientRect().bottom,'last row overflows card');
+    buttons[9].click();
+    assert(calls.length===1 && calls[0].data.entity_id==='switch.socket10' && calls[0].service==='turn_on','socket tap misrouted');
+    hold(0);
+    assert(opened.join()==='switch.socket1' && calls.length===1,'socket hold actuated or lost details');
+    assert(SWITCH_SCHEMA.some(r=>r.name==='groups'),'grouped editor field missing');
+  });
   document.querySelector('#result').textContent = JSON.stringify(results, null, 2);
   document.documentElement.dataset.testStatus = results.every((r) => r.passed) ? 'passed' : 'failed';
 }
