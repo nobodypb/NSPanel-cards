@@ -533,6 +533,10 @@ switches:
     icon: mdi:fan
 ```
 
+Run `python3 dev/check-switch-tests.py --browser /path/to/chromium` to verify
+target routing, unchanged tap commands, fallback values, configuration updates
+and editor support with fake HA.
+
 ### Camera
 
 <table>
