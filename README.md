@@ -359,6 +359,9 @@ height: 144
 always share its full width, so two buttons under `columns: 3` are two half-width buttons — the
 lower card in the picture is `columns: 3`, its first button icon-only and lit by a boolean. Six buttons is the cap; more than that on a 480px
 panel is a list of things you cannot read, let alone hit.
+For six page shortcuts in two rows, `compact_rows: true` reduces icon and label
+spacing while keeping the whole button as the touch target. A 168px card with
+three columns gives each row a target over 56px high at 480×480.
 
 **Every other card here reflects a state. These do not.** You press "Goodnight", the house
 does fifteen things over the next minute, and the entity you pressed looks exactly as it did
@@ -507,6 +510,7 @@ greyed out and says so. A long-press opens more-info.
 | Option | Default | |
 | --- | --- | --- |
 | `switches` | — | up to 6; `entity` alone is the one-switch shorthand |
+| `groups` | — | room headings with `switches` lists; the compact two-column layout can show ten sockets on one 442px card |
 | `columns` | `2` | 1–3, capped at the number of switches; a row is always shared |
 | `echo_ms` | `1500` | how long the tap's state outranks Home Assistant's |
 | `show_name` | `true` | `false` hides the name; also settable per switch |
@@ -523,6 +527,27 @@ tile state and availability still use `entity`. Without a non-empty string targe
 details use `entity` as before. `more_info: false` disables details for either target.
 No entity relationship is inferred. The native app opens its matching detail sheet;
 the browser opens Home Assistant more-info. Older bundles ignore this option.
+
+For a compact socket page, use `groups` instead of `switches`. Each group has a
+`name` and a `switches` list; each switch can have a small `circuit` label.
+The card shows the name above the circuit and the current state at the right.
+Tap and hold keep the usual switch actions. At 480×480, a 442px card with five
+rows gives each socket a 60px high target. Use the visual editor's Groups object
+field or edit the dashboard YAML directly.
+
+```yaml
+type: custom:nspanel-switch-card
+height: 442
+groups:
+  - name: Living room
+    switches:
+      - entity: switch.socket_a
+        name: Socket 1
+        circuit: P119A
+      - entity: switch.socket_b
+        name: Socket 2
+        circuit: P119B
+```
 
 ```yaml
 type: custom:nspanel-switch-card
@@ -1262,5 +1287,6 @@ show_presets: false
 ```
 
 Narrow light cards (under 180 logical pixels wide) place the icon above the
-percentage and allow two title lines. At 480×480, six cards fit in two rows of
-three with 216-pixel heights, 12-pixel gaps and 12-pixel outer padding.
+percentage and allow two title lines. Under 120 pixels they also use smaller
+type and spacing. At 480×480, eight cards fit in two rows of four with
+216-pixel heights, 12-pixel gaps and 12-pixel outer padding.

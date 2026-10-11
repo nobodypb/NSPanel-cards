@@ -1381,6 +1381,15 @@ class NsPanelLightCard extends NsBaseCard {
           .name { white-space:normal; overflow-wrap:anywhere;
             display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; }
         }
+        @container (max-width: 119.99px) {
+          .content { padding-left:12px; padding-right:12px; }
+          .icon { width:44px; height:44px; border-radius:14px; }
+          .icon ha-icon { --mdc-icon-size:26px; }
+          .value { font-size:32px; }
+          .value small { font-size:16px; }
+          .name { font-size:18px; line-height:22px; }
+          .sub { font-size:12px; line-height:16px; }
+        }
       </style>
       <div class="card" style="--ns-height:${cfg.height}px;--ns-accent:${this._accent()};
         --ns-fill-strong:${tintStops(this._accent()).strong};
@@ -2346,6 +2355,9 @@ const BUTTON_CSS = `
 .btn.nolabel .bl { display: none; }
 .btn.nolabel ha-icon { --mdc-icon-size: 48px; }
 .pad[data-cols="3"] .btn.nolabel ha-icon { --mdc-icon-size: 40px; }
+.pad.compact-rows .btn { gap: 3px; padding: 4px; }
+.pad.compact-rows .btn ha-icon { --mdc-icon-size: 26px; }
+.pad.compact-rows .btn .bl { font-size: 14px; line-height: 18px; }
 .btn[disabled] { opacity: .45; }
 `;
 
@@ -2625,6 +2637,7 @@ class NsPanelButtonCard extends NsInfoCard {
     const items = this._items;
     pad.style.setProperty('--ns-cols', String(this._columns));
     pad.setAttribute('data-cols', String(this._columns));
+    pad.classList.toggle('compact-rows', this._config.compact_rows === true);
 
     this._btns = items.map((item) => {
       const el = document.createElement('button');
@@ -2692,6 +2705,22 @@ const SWITCH_CSS = `
 .btn.on { background: var(--ns-accent-dim); }
 .btn.on ha-icon, .btn.on .bl { color: var(--ns-accent); }
 .pad[data-cols="3"] .btn .st { font-size: 13px; line-height: 16px; }
+.card.info.socket-groups .content { padding: 12px; }
+.pad.grouped { display: block; }
+.socket-heading { color: var(--ns-muted); font-size: 14px; font-weight: 600;
+  line-height: 17px; margin-bottom: 4px; }
+.socket-section + .socket-section { margin-top: 10px; }
+.socket-row { display: flex; gap: 10px; height: 60px; }
+.socket-row + .socket-row { margin-top: 8px; }
+.pad.grouped .btn.socket { flex: 1 1 0; min-width: 0; height: 60px;
+  flex-direction: row; justify-content: space-between; text-align: left;
+  gap: 4px; padding: 0 10px; border-radius: 16px; }
+.socket-copy { min-width: 0; flex: 1; }
+.pad.grouped .btn.socket .bl { font-size: 16px; line-height: 20px; }
+.socket-circuit { color: var(--ns-muted); font-size: 12px; line-height: 16px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pad.grouped .btn.socket .st { flex: none; font-size: 12px; font-weight: 600; }
+.pad.grouped .btn.socket.on .st { color: var(--ns-accent); }
 `;
 
 /* What the entity picker offers, and what the card is for: anything whose
@@ -2726,6 +2755,16 @@ class NsPanelSwitchCard extends NsInfoCard {
     return Math.max(1, Math.min(cols, this._items.length));
   }
 
+  get _groups() {
+    if (!Array.isArray(this._config.groups)) return [];
+    return this._config.groups.map((group) => ({
+      name: group && group.name || '',
+      switches: (Array.isArray(group && group.switches) ? group.switches : [])
+        .map((it) => typeof it === 'string' ? { entity: it } : it)
+        .filter((it) => it && it.entity),
+    })).filter((group) => group.switches.length);
+  }
+
   static getStubConfig(hass) {
     const found = hass && hass.states
       ? Object.keys(hass.states).find((e) => e.indexOf('switch.') === 0 ||
@@ -2745,6 +2784,7 @@ class NsPanelSwitchCard extends NsInfoCard {
   /* One switch from `entity`, or a list from `switches`, like the button card. */
   get _items() {
     const cfg = this._config;
+    if (this._groups.length) return this._groups.flatMap((group) => group.switches);
     const list = Array.isArray(cfg.switches) && cfg.switches.length
       ? cfg.switches
       : (cfg.entity ? [{ entity: cfg.entity, name: cfg.title || cfg.name, icon: cfg.icon, detail_entity: cfg.detail_entity, step_target: cfg.step_target, step: cfg.step, effect_favorites: cfg.effect_favorites }] : []);
@@ -2878,7 +2918,7 @@ class NsPanelSwitchCard extends NsInfoCard {
     if (this._built || !this._config) return;
     this._built = true;
     this.shadowRoot.innerHTML = `
-      ${this._shell()}
+      ${this._shell(this._groups.length ? 'socket-groups' : '')}
         <div class="content"><div class="pad"></div></div>
       </div>
     `;
@@ -2886,27 +2926,53 @@ class NsPanelSwitchCard extends NsInfoCard {
     const pad = this.shadowRoot.querySelector('.pad');
     pad.style.setProperty('--ns-cols', String(this._columns));
     pad.setAttribute('data-cols', String(this._columns));
+    const grouped = this._groups.length > 0;
+    pad.classList.toggle('grouped', grouped);
 
     const flag = (item, key) => (item[key] === undefined ? !!this._config[key] : !!item[key]);
     this._btns = this._items.map((item) => {
       const el = document.createElement('button');
       // without the name the icon takes its room; without both the tile is
       // the icon alone, and the lit colour is the state
-      el.className = 'btn' + (flag(item, 'show_name') ? '' : ' nolabel') +
+      el.className = 'btn' + (grouped ? ' socket' : '') +
+        (flag(item, 'show_name') ? '' : ' nolabel') +
         (flag(item, 'show_state') ? '' : ' nostate');
-      el.innerHTML = '<ha-icon></ha-icon><div class="bl"></div><div class="st"></div>';
+      el.innerHTML = grouped
+        ? '<div class="socket-copy"><div class="bl"></div><div class="socket-circuit"></div></div><div class="st"></div>'
+        : '<ha-icon></ha-icon><div class="bl"></div><div class="st"></div>';
       const b = {
         item, el,
         icon: el.querySelector('ha-icon'),
         label: el.querySelector('.bl'),
+        circuit: el.querySelector('.socket-circuit'),
         state: el.querySelector('.st'),
         local: null,
         localUntil: 0,
       };
       this._bindSwitchPress(b);
-      pad.appendChild(el);
+      if (!grouped) pad.appendChild(el);
       return b;
     });
+    if (grouped) {
+      let offset = 0;
+      this._groups.forEach((group) => {
+        const section = document.createElement('div');
+        section.className = 'socket-section';
+        const heading = document.createElement('div');
+        heading.className = 'socket-heading';
+        heading.textContent = group.name;
+        section.append(heading);
+        for (let i = 0; i < group.switches.length; i += 2) {
+          const row = document.createElement('div');
+          row.className = 'socket-row';
+          row.append(this._btns[offset + i].el);
+          if (i + 1 < group.switches.length) row.append(this._btns[offset + i + 1].el);
+          section.append(row);
+        }
+        offset += group.switches.length;
+        pad.append(section);
+      });
+    }
   }
 
   _render() {
@@ -2917,8 +2983,9 @@ class NsPanelSwitchCard extends NsInfoCard {
       const on = !broken && this._isOn(b);
       b.el.classList.toggle('on', on);
       if (broken) b.el.setAttribute('disabled', ''); else b.el.removeAttribute('disabled');
-      b.icon.setAttribute('icon', broken ? 'mdi:alert-circle-outline' : this._icon(b, on));
+      if (b.icon) b.icon.setAttribute('icon', broken ? 'mdi:alert-circle-outline' : this._icon(b, on));
       b.label.textContent = b.item.name || friendly(s, b.item.entity);
+      if (b.circuit) b.circuit.textContent = b.item.circuit || '';
       b.state.textContent = broken ? 'Unavailable'
         : (on ? this._config.on_text : this._config.off_text);
     });
@@ -4499,6 +4566,9 @@ const EDITOR_LABELS = {
   off_text: 'Text while off',
   show_name: 'Show names',
   show_state: 'Show the state line',
+  compact_rows: 'Compact rows for page buttons',
+  groups: 'Room groups (name and switches)',
+  circuit: 'Circuit label',
   interval: 'Seconds between pictures',
   fit: 'Picture fit',
   state_entity: 'Lit while this entity is on',
@@ -4911,6 +4981,7 @@ const BUTTON_SCHEMA = [
   {
     name: '', type: 'grid', schema: [
       { name: 'columns', selector: { number: { min: 1, max: 3, step: 1, mode: 'box' } } },
+      { name: 'compact_rows', selector: { boolean: {} } },
       { name: 'feedback_ms', selector: { number: { min: 0, max: 5000, step: 100, mode: 'box' } } },
       { name: 'confirm', selector: { boolean: {} } },
       { name: 'haptics', selector: { boolean: {} } },
@@ -4968,6 +5039,7 @@ const SWITCH_SCHEMA = [
     ],
   },
   { name: 'accent', selector: { text: {} } },
+  { name: 'groups', selector: { object: {} } },
   {
     name: 'switches', selector: listOf({
       entity: { required: true, selector: { entity: { domain: SWITCH_DOMAINS } } },
@@ -4976,6 +5048,7 @@ const SWITCH_SCHEMA = [
       ...LIGHT_DETAIL_FIELDS,
       step: {selector: {number: {min: 1, max: 50, step: 1, mode: 'box'}}},
       name: { selector: { text: {} } },
+      circuit: { selector: { text: {} } },
       icon: { selector: { icon: {} } },
       show_name: { selector: { boolean: {} } },
       show_state: { selector: { boolean: {} } },
