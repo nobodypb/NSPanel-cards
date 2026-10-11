@@ -886,8 +886,6 @@ class LightDialog {
     else if(p.caps.color)rgb=lightRgb(values.hue,values.saturation);
     else if(/^#[\da-f]{6}$/i.test(opts.accent))rgb=opts.accent.slice(1).match(/../g).map(v=>parseInt(v,16));
     const css=c=>'rgb('+c.join(',')+')';this.body.dataset.count=String(channels.length);
-    // Let the shadow mark the position over the gradient and darker fill.
-    const fillRgb=rgb.map((v,i)=>Math.round(v+([11,13,16][i]-v)*.30));
     channels.forEach(ch=>{
       const node=this.tracks[ch], v=values[ch];node.disabled=!available||this.busy||!!this.drag&&this.drag!==ch;
       node.classList.toggle('dimmed',!available);
@@ -899,7 +897,7 @@ class LightDialog {
       if(ch==='saturation')gradient='linear-gradient(to top,white,'+css(lightRgb(values.hue,1))+')';
       if(ch==='temperature')gradient='linear-gradient(to top,'+Array.from({length:9},(_,i)=>css(lightKelvin(p.range[0]+(p.range[1]-p.range[0])*i/8))).join(',')+')';
       node.style.background=gradient||'#16191f';
-      const fill=node.querySelector('.light-fill');fill.style.height=ch==='brightness'?v*100+'%':'0';fill.style.background=css(fillRgb);
+      const fill=node.querySelector('.light-fill');fill.style.height=ch==='brightness'?v*100+'%':'0';fill.style.background=css(rgb);
       node.querySelectorAll('.light-value').forEach(el=>{el.replaceChildren();if(ch==='brightness'){const value=document.createElement('span'),unit=document.createElement('small');value.textContent=Math.round(v*100);unit.textContent='%';value.append(unit);el.append(value);}});
       const marker=node.querySelector('.light-marker'),lineHeight=node.classList.contains('active')?5:3;
       marker.style.top='clamp(0px, calc('+(1-v)*100+'% - '+lineHeight+'px), calc(100% - '+lineHeight+'px))';
