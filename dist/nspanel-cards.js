@@ -886,8 +886,7 @@ class LightDialog {
     else if(p.caps.color)rgb=lightRgb(values.hue,values.saturation);
     else if(/^#[\da-f]{6}$/i.test(opts.accent))rgb=opts.accent.slice(1).match(/../g).map(v=>parseInt(v,16));
     const css=c=>'rgb('+c.join(',')+')';this.body.dataset.count=String(channels.length);
-    // Keep the selected colour in the line, with a darker brightness fill.
-    const lineRgb=rgb.map(v=>Math.round(v+(255-v)*.24));
+    // Let the shadow mark the position over the gradient and darker fill.
     const fillRgb=rgb.map((v,i)=>Math.round(v+([11,13,16][i]-v)*.30));
     channels.forEach(ch=>{
       const node=this.tracks[ch], v=values[ch];node.disabled=!available||this.busy||!!this.drag&&this.drag!==ch;
@@ -903,7 +902,6 @@ class LightDialog {
       const fill=node.querySelector('.light-fill');fill.style.height=ch==='brightness'?v*100+'%':'0';fill.style.background=css(fillRgb);
       node.querySelectorAll('.light-value').forEach(el=>{el.replaceChildren();if(ch==='brightness'){const value=document.createElement('span'),unit=document.createElement('small');value.textContent=Math.round(v*100);unit.textContent='%';value.append(unit);el.append(value);}});
       const marker=node.querySelector('.light-marker'),lineHeight=node.classList.contains('active')?5:3;
-      marker.style.background=css(lineRgb);
       marker.style.top='clamp(0px, calc('+(1-v)*100+'% - '+lineHeight+'px), calc(100% - '+lineHeight+'px))';
     });
     this.buttons.forEach((b,i)=>{b.setAttribute('aria-label',(i===0?'Increase ':'Decrease ')+this.active);
