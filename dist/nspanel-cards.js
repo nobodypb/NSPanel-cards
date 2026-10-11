@@ -712,14 +712,6 @@ function lightKelvin(k) {
     t<=66 ? 99.4708025861*Math.log(t)-161.1195681661 : 288.1221695283*Math.pow(t-60,-.0755148492),
     t>=66 ? 255 : t<=19 ? 0 : 138.5177312231*Math.log(t-10)-305.0447927307].map(v => Math.round(clamp(v,0,255)));
 }
-function lightLuminance(rgb) {
-  const lin = rgb.map(v => { const n=v/255; return n<=.04045 ? n/12.92 : Math.pow((n+.055)/1.055,2.4); });
-  return .2126*lin[0]+.7152*lin[1]+.0722*lin[2];
-}
-function lightInk(rgb) {
-  const luminance=lightLuminance(rgb);
-  return (luminance+.05)/(.00397+.05) >= (.90212+.05)/(luminance+.05) ? '#0b0d10' : '#f2f4f7';
-}
 const LIGHT_SHEET_CSS = `
 :host(.light-sheet) .scrim.in { opacity:.72; }
 :host(.light-sheet) .wrap { padding:12px 16px; gap:8px; }
@@ -734,7 +726,7 @@ const LIGHT_SHEET_CSS = `
 .light-value { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:44px; font-weight:700; font-variant-numeric:tabular-nums; color:#f2f4f7; text-shadow:0 1px 3px rgba(0,0,0,.45),-1px 0 #0b0d10,1px 0 #0b0d10,0 -1px #0b0d10,0 1px #0b0d10; pointer-events:none; }
 .light-body[data-count="3"] .light-value { font-size:32px; }
 .light-value small { font-size:.5em; font-weight:600; }
-.light-marker { position:absolute; width:100%; height:3px; pointer-events:none; }
+.light-marker { position:absolute; width:100%; height:3px; box-shadow:0 1px 4px 1px rgba(0,0,0,.65); pointer-events:none; }
 .light-track.active .light-marker { height:5px; }
 .light-track.dimmed { opacity:.55; }
 .light-steps { display:flex; flex-direction:column; gap:14px; width:96px; flex:none; }
@@ -894,6 +886,9 @@ class LightDialog {
     else if(p.caps.color)rgb=lightRgb(values.hue,values.saturation);
     else if(/^#[\da-f]{6}$/i.test(opts.accent))rgb=opts.accent.slice(1).match(/../g).map(v=>parseInt(v,16));
     const css=c=>'rgb('+c.join(',')+')';this.body.dataset.count=String(channels.length);
+    // Keep the selected colour in the line, with a darker brightness fill.
+    const lineRgb=rgb.map(v=>Math.round(v+(255-v)*.24));
+    const fillRgb=rgb.map((v,i)=>Math.round(v+([11,13,16][i]-v)*.30));
     channels.forEach(ch=>{
       const node=this.tracks[ch], v=values[ch];node.disabled=!available||this.busy||!!this.drag&&this.drag!==ch;
       node.classList.toggle('dimmed',!available);
@@ -905,15 +900,10 @@ class LightDialog {
       if(ch==='saturation')gradient='linear-gradient(to top,white,'+css(lightRgb(values.hue,1))+')';
       if(ch==='temperature')gradient='linear-gradient(to top,'+Array.from({length:9},(_,i)=>css(lightKelvin(p.range[0]+(p.range[1]-p.range[0])*i/8))).join(',')+')';
       node.style.background=gradient||'#16191f';
-      const fill=node.querySelector('.light-fill');fill.style.height=ch==='brightness'?v*100+'%':'0';fill.style.background=css(rgb);
+      const fill=node.querySelector('.light-fill');fill.style.height=ch==='brightness'?v*100+'%':'0';fill.style.background=css(fillRgb);
       node.querySelectorAll('.light-value').forEach(el=>{el.replaceChildren();if(ch==='brightness'){const value=document.createElement('span'),unit=document.createElement('small');value.textContent=Math.round(v*100);unit.textContent='%';value.append(unit);el.append(value);}});
       const marker=node.querySelector('.light-marker'),lineHeight=node.classList.contains('active')?5:3;
-      let background=v===1?rgb:[22,25,31];
-      if(ch==='hue')background=lightRgb(v,1);
-      if(ch==='saturation')background=lightRgb(values.hue,v);
-      if(ch==='temperature')background=lightKelvin(p.range[0]+v*(p.range[1]-p.range[0]));
-      const contrast=(a,b)=>{const x=lightLuminance(a),y=lightLuminance(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05);};
-      marker.style.background=contrast(rgb,background)>=3?css(rgb):lightInk(background);
+      marker.style.background=css(lineRgb);
       marker.style.top='clamp(0px, calc('+(1-v)*100+'% - '+lineHeight+'px), calc(100% - '+lineHeight+'px))';
     });
     this.buttons.forEach((b,i)=>{b.setAttribute('aria-label',(i===0?'Increase ':'Decrease ')+this.active);
