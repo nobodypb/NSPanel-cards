@@ -1,0 +1,21 @@
+<!doctype html><meta charset="utf-8"><script src="../../dist/local/nspanel-ha-app-card.js"></script><script>
+window.onload = () => {
+ const assert = (ok, msg) => { if (!ok) throw Error(msg); };
+ try {
+ const Card = customElements.get('nspanel-ha-app-card');
+ const card = new Card(); document.body.append(card);
+ card.setConfig({...Card.getStubConfig(), title: '<img src=x onerror=alert(1)>', height: 1});
+ assert(card.shadowRoot.querySelector('ha-card').style.height === '76px', 'minimum hit geometry');
+ assert(!card.shadowRoot.querySelector('img'), 'configuration must be text');
+ assert(card.shadowRoot.querySelector('ha-card').getAttribute('aria-disabled') === 'true', 'browser is preview only');
+ const editor = Card.getConfigElement(); document.body.append(editor);
+ editor.setConfig({...Card.getStubConfig(), future_option: {keep: true}});
+ let changed; editor.addEventListener('config-changed', e => changed=e.detail.config);
+ editor.shadowRoot.querySelector('ha-form').dispatchEvent(new CustomEvent('value-changed', {detail:{value:{title:'HA', height:90}}}));
+ assert(changed.title === 'HA' && changed.future_option.keep, 'editor preserves unknown data');
+ assert(changed.type === 'custom:nspanel-ha-app-card', 'stable card type');
+ assert(window.customCards.filter(x => x.type === 'nspanel-ha-app-card').length === 1, 'one picker entry');
+ document.body.dataset.result = 'passed'; document.body.textContent = '6 companion card checks passed';
+ } catch (e) { document.body.dataset.result = 'failed'; document.body.textContent = e.stack; }
+};
+</script>
