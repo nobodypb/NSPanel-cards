@@ -17,7 +17,7 @@
     render() {
       this.shadowRoot.replaceChildren();
       const style = document.createElement('style');
-      style.textContent = `:host{display:block}ha-card{height:${this.config.height}px;box-sizing:border-box;padding:12px;background:#16191f;color:#f2f4f7;border-radius:22px;box-shadow:none;font:600 16px sans-serif}.title{color:#98a1b0;font:500 14px sans-serif}.note{margin-top:12px;color:#98a1b0;font:14px sans-serif}`;
+      style.textContent = `:host{display:block}ha-card{height:${this.config.height}px;box-sizing:border-box;padding:4px 12px;background:#16191f;color:#f2f4f7;border-radius:22px;box-shadow:none;font:600 16px sans-serif}.title{margin-left:8px;color:#98a1b0;font:500 12px sans-serif}.note{margin-top:4px;color:#98a1b0;font:14px sans-serif}`;
       const card = document.createElement('ha-card');
       const title = document.createElement('div'); title.className = 'title'; title.textContent = this.config.title || defaults.title;
       const note = document.createElement('div'); note.className = 'note';
