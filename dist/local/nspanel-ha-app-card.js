@@ -1,12 +1,14 @@
 /* Private downstream companion card. Independent of the core NSPanel bundle. */
 (() => {
   const defaults = {type: 'custom:nspanel-ha-app-card', title: 'Home Assistant', icon: 'mdi:home-assistant', height: 76};
+  const german = hass => String(hass?.locale?.language || hass?.language ||
+    (typeof navigator !== 'undefined' ? navigator.language : 'en')).startsWith('de');
   class CompanionCard extends HTMLElement {
     constructor() { super(); this.attachShadow({mode: 'open'}); }
     static getConfigElement() { return document.createElement('nspanel-ha-app-card-editor'); }
     static getStubConfig() { return {...defaults}; }
     setConfig(config) { this.config = {...defaults, ...config}; this.render(); }
-    set hass(value) { this._hass = value; }
+    set hass(value) { this._hass = value; if (this.config) this.render(); }
     getCardSize() { return Math.ceil((Number(this.config?.height) || 76) / 50); }
     render() {
       const c = this.config;
@@ -20,14 +22,15 @@
       const icon = document.createElement('ha-icon'); icon.setAttribute('icon', c.icon);
       const title = document.createElement('span'); title.className = 'title'; title.textContent = c.title;
       card.append(icon, title);
-      const note = document.createElement('div'); note.className = 'note'; note.textContent = 'Nur auf dem Panel verfügbar';
+      const note = document.createElement('div'); note.className = 'note'; note.textContent = german(this._hass)
+        ? 'Nur auf dem Panel verfügbar' : 'Available on the panel only';
       root.append(style, card, note);
     }
   }
   class CompanionEditor extends HTMLElement {
     constructor() { super(); this.attachShadow({mode: 'open'}); }
     setConfig(config) { this.config = {...config}; this.render(); }
-    set hass(value) { this._hass = value; if (this.form) this.form.hass = value; }
+    set hass(value) { this._hass = value; if (this.config) this.render(); }
     render() {
       const form = document.createElement('ha-form');
       form.hass = this._hass;
@@ -37,7 +40,9 @@
         {name: 'icon', selector: {icon: {}}},
         {name: 'height', selector: {number: {min: 76, max: 900, mode: 'box'}}},
       ];
-      form.computeLabel = ({name}) => ({title: 'Titel', icon: 'Icon', height: 'Höhe'})[name];
+      form.computeLabel = ({name}) => (german(this._hass)
+        ? {title: 'Titel', icon: 'Symbol', height: 'Höhe'}
+        : {title: 'Title', icon: 'Icon', height: 'Height'})[name];
       form.addEventListener('value-changed', (event) => {
         event.stopPropagation();
         const value = event.detail?.value ?? {};

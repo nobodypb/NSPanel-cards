@@ -394,6 +394,24 @@ async function run() {
     editor._valueChanged({stopPropagation(){},detail:{value:{title:'Changed'}}});
     assert(editor._config.swap_press_actions===true,'swap option lost');
   });
+  await test('German labels follow HA locale and preserve configured names', async()=>{
+    await mount(state(['brightness'],'off'), {presets:[{name:'Evening custom',brightness_pct:35}]});
+    const hass = {states:{'light.test':state(['brightness'],'off')},locale:{language:'de'},
+      callService:()=>Promise.resolve()};
+    card.hass=hass;await pause();
+    assert(card._elSub.textContent==='Aus','German light state missing');
+    assert(card._elPresets.firstChild.textContent==='Evening custom','configured preset translated');
+    card._openSheet();
+    assert(sheet()._state.textContent.startsWith('Aus'),'German sheet state missing');
+    assert(sheet()._actions.lastChild.textContent==='Einschalten','German action missing');
+    sheet().close();
+    const editor=customElements.get('nspanel-light-card').getConfigElement();
+    editor.setConfig({type:'custom:nspanel-light-card',entity:'light.test'});
+    editor.hass=hass;
+    assert(editor._form.computeLabel({name:'show_presets'})==='Vorgaben anzeigen','German editor label missing');
+    editor.hass={...hass,locale:{language:'en'}};
+    assert(editor._form.computeLabel({name:'show_presets'})==='Show presets','English editor label missing');
+  });
   document.querySelector('#result').textContent = JSON.stringify(results, null, 2);
   document.documentElement.dataset.testStatus = results.every((r) => r.passed) ? 'passed' : 'failed';
   if (preview) document.querySelector('#result').style.display = 'none';

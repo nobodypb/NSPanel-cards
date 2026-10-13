@@ -59,6 +59,65 @@ console.info(
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
+// Card-owned text follows the Home Assistant user's language. Configured
+// names, effects and media metadata are never passed through this dictionary.
+const NS_DE = {
+  'On': 'An', 'Off': 'Aus', 'Unavailable': 'Nicht verfügbar', 'Unknown': 'Unbekannt',
+  'Offline': 'Offline', 'Close': 'Schließen', 'Increase': 'Erhöhen', 'Decrease': 'Verringern',
+  'Open': 'Offen', 'Closed': 'Geschlossen', 'Opening': 'Öffnet', 'Closing': 'Schließt',
+  'Stop': 'Stopp', 'Back': 'Zurück', 'Turn on': 'Einschalten', 'Turn off': 'Ausschalten',
+  'Low': 'Niedrig', 'Mid': 'Mittel', 'Full': 'Voll', 'Half': 'Halb', 'Shut': 'Zu',
+  'Colour': 'Farbe', 'White': 'Weiß', 'Presets': 'Vorgaben', 'Effects': 'Effekte',
+  'No response': 'Keine Antwort', 'Command failed': 'Befehl fehlgeschlagen',
+  'Off · last values': 'Aus · letzte Werte', 'Tap again': 'Erneut tippen',
+  'Run': 'Ausführen', 'Previous': 'Zurück', 'Next': 'Weiter', 'Play': 'Abspielen',
+  'Pause': 'Pause', 'Playing': 'Spielt', 'Paused': 'Pausiert',
+  'Nothing playing': 'Keine Wiedergabe', 'Missing': 'Fehlt', 'Detected': 'Erkannt',
+  'Clear': 'Frei', 'Wet': 'Nass', 'Dry': 'Trocken', 'Problem': 'Problem',
+  'All clear': 'Alles in Ordnung', 'Heat': 'Heizen', 'Cool': 'Kühlen',
+  'Auto': 'Auto', 'Fan': 'Lüfter', 'Eco': 'Eco', 'Day': 'Tag', 'Warm': 'Warm',
+  'Disarmed': 'Unscharf', 'Armed home': 'Scharf: Zuhause',
+  'Armed away': 'Scharf: Abwesend', 'Armed night': 'Scharf: Nacht',
+  'Armed vacation': 'Scharf: Urlaub', 'Armed (bypass)': 'Scharf (umgangen)',
+  'Arming…': 'Wird scharfgeschaltet…', 'Disarming…': 'Wird entschärft…',
+  'Pending…': 'Warten…', 'TRIGGERED': 'ALARM', 'Disarm': 'Entschärfen',
+  'Home': 'Zuhause', 'Away': 'Abwesend', 'Night': 'Nacht',
+  'Bypass': 'Umgehen', 'Vacation': 'Urlaub', 'Enter the code': 'Code eingeben',
+  'Wrong code': 'Falscher Code', 'Camera unavailable': 'Kamera nicht verfügbar',
+  'Loading…': 'Lädt…', 'No picture': 'Kein Bild',
+  'Partly cloudy': 'Teilweise bewölkt', 'Clear sky': 'Klar',
+  'Thunder, rain': 'Gewitter, Regen', 'Sleet': 'Schneeregen',
+  'Windy': 'Windig', 'Heavy rain': 'Starkregen', 'Severe': 'Unwetter',
+  'Frequently used': 'Häufig genutzt', 'No usage yet': 'Noch keine Nutzung',
+  'Brightness': 'Helligkeit', 'Temperature': 'Farbtemperatur',
+  'Hue': 'Farbton', 'Saturation': 'Sättigung',
+  'Full-screen control': 'Vollbildsteuerung', 'Nothing': 'Nichts',
+  'Daily': 'Täglich', 'Hourly': 'Stündlich',
+  'Always brightness': 'Immer Helligkeit',
+  'Last used slider (starts with brightness)': 'Letzter Regler (beginnt mit Helligkeit)',
+  'Fill the card (crop)': 'Karte füllen (zuschneiden)',
+  'Whole picture': 'Ganzes Bild',
+};
+const NS_DE_WEATHER = {
+  sunny: 'Sonnig', 'clear-night': 'Klar', cloudy: 'Bewölkt', fog: 'Nebel',
+  hail: 'Hagel', lightning: 'Gewitter', 'lightning-rainy': 'Gewitter, Regen',
+  partlycloudy: 'Teilweise bewölkt', pouring: 'Starkregen', rainy: 'Regnerisch',
+  snowy: 'Schnee', 'snowy-rainy': 'Schneeregen', windy: 'Windig',
+  'windy-variant': 'Windig', exceptional: 'Unwetter',
+};
+
+function nsLanguage(hass) {
+  const value = hass && (hass.locale && hass.locale.language || hass.language);
+  return String(value || (typeof navigator !== 'undefined' ? navigator.language : 'en')).toLowerCase();
+}
+function nsText(hass, english) { return nsLanguage(hass).startsWith('de') ? (NS_DE[english] || english) : english; }
+function nsFormatState(hass, state, fallback) {
+  if (state && hass && typeof hass.formatEntityState === 'function') {
+    try { return hass.formatEntityState(state); } catch (_) { /* old HA */ }
+  }
+  return nsText(hass, fallback);
+}
+
 function fireEvent(node, type, detail, options) {
   const o = options || {};
   const event = new Event(type, {
@@ -534,6 +593,10 @@ class NsSheet extends HTMLElement {
     if (this._lightBody && this._lightBody.parentNode !== this._wrap) this._actions.before(this._lightBody);
     this._opts = Object.assign({ step: 5, fromTop: false, accent: '#ffb74a',
       showLevel: true, enabled: true }, opts);
+    const hass = opts.owner && opts.owner._hass;
+    this.shadowRoot.querySelector('.x').setAttribute('aria-label', nsText(hass, 'Close'));
+    this.shadowRoot.querySelector('.up').setAttribute('aria-label', nsText(hass, 'Increase'));
+    this.shadowRoot.querySelector('.down').setAttribute('aria-label', nsText(hass, 'Decrease'));
     this.style.setProperty('--ns-accent', this._opts.accent);
     this._title.textContent = opts.title || '';
     this._state.textContent = opts.state || '';
@@ -847,8 +910,8 @@ class LightDialog {
   policy() { return lightColorPolicy(this.state(),this.attributes(),true); }
   available() { return this.policy().caps.available && this.owner._hass?.connection?.connected !== false; }
   favorites() { return Array.isArray(this.config.effect_favorites) ? this.config.effect_favorites.filter(p => p && typeof p.effect==='string' && p.effect) : []; }
-  presets() { return Array.isArray(this.config.presets) ? this.config.presets : this.policy().caps.brightness ?
-    [{name:'Low',brightness_pct:15},{name:'Mid',brightness_pct:50},{name:'Full',brightness_pct:100}] : []; }
+  presets() { return this.owner._explicitPresets && Array.isArray(this.config.presets) ? this.config.presets : this.policy().caps.brightness ?
+    [{name:nsText(this.owner._hass,'Low'),brightness_pct:15},{name:nsText(this.owner._hass,'Mid'),brightness_pct:50},{name:nsText(this.owner._hass,'Full'),brightness_pct:100}] : []; }
   channels() {
     const p = this.policy();
     if (this.white && !p.white) this.white=false;
@@ -924,14 +987,15 @@ class LightDialog {
     const s=this.state(), p=this.policy(), available=this.available(), on=isOn(s);
     const accent=this.config.accent || (this.config.follow_color!==false && on && Array.isArray(s.attributes.rgb_color)?'rgb('+readableTint(s.attributes.rgb_color).join(',')+')':'#ffb74a');
     const action=(label,icon,run,enabled=true,primary=false,dimWhenDisabled=false)=>({label,icon,run,enabled,primary,dimWhenDisabled,close:false});
-    const actions=this.page?[action('Back','mdi:arrow-left',()=>this.browse(null))]:[
-      ...(p.white&&p.color?[action(this.white?'Colour':'White','mdi:palette',()=>{this.white=!this.white;this.active='brightness';this.render();},!this.drag)]:[]),
-      ...(this.presets().length?[action('Presets','mdi:format-list-bulleted',()=>this.browse('Presets'),!this.drag)]:[]),
-      ...(this.favorites().length?[action('Effects','mdi:creation',()=>this.browse('Effects'),!this.drag)]:[]),
-      action(on?'Turn off':'Turn on','mdi:power',()=>this.send('light',on?'turn_off':'turn_on',{entity_id:this.config.entity},true),available&&!this.busy&&!this.drag,on,!available),
+    const hass=this.owner._hass;
+    const actions=this.page?[action(nsText(hass,'Back'),'mdi:arrow-left',()=>this.browse(null))]:[
+      ...(p.white&&p.color?[action(nsText(hass,this.white?'Colour':'White'),'mdi:palette',()=>{this.white=!this.white;this.active='brightness';this.render();},!this.drag)]:[]),
+      ...(this.presets().length?[action(nsText(hass,'Presets'),'mdi:format-list-bulleted',()=>this.browse('Presets'),!this.drag)]:[]),
+      ...(this.favorites().length?[action(nsText(hass,'Effects'),'mdi:creation',()=>this.browse('Effects'),!this.drag)]:[]),
+      action(nsText(hass,on?'Turn off':'Turn on'),'mdi:power',()=>this.send('light',on?'turn_off':'turn_on',{entity_id:this.config.entity},true),available&&!this.busy&&!this.drag,on,!available),
     ];
-    return {title:this.page||this.config.title||this.config.name||friendly(s,this.config.entity),
-      state:(available?(on?'On':this.hasLastValues()?'Off · last values':'Off'):'Unavailable')+(this.error?' · '+this.error:this.page==='Effects'&&this.attributes().effect?' · '+this.attributes().effect:''),
+    return {title:this.page?nsText(hass,this.page):this.config.title||this.config.name||friendly(s,this.config.entity),
+      state:nsText(hass,available?(on?'On':this.hasLastValues()?'Off · last values':'Off'):'Unavailable')+(this.error?' · '+nsText(hass,this.error):this.page==='Effects'&&this.attributes().effect?' · '+this.attributes().effect:''),
       stateColor:this.error?'#f87171':null,accent,value:0,showLevel:false,enabled:true,actions,
       lightBody:this.page?this.choices:this.channels().length?this.body:null,
       owner:this.owner,lightDialog:true,onClose:()=>this.close()};
@@ -939,7 +1003,7 @@ class LightDialog {
   buildTracks(channels) {
     this.layout=channels.join(','); this.body.replaceChildren(); this.tracks={};
     channels.forEach(ch=>{
-      const node=document.createElement('button');node.className='light-track';node.setAttribute('aria-label',ch);node.setAttribute('role','slider');
+      const node=document.createElement('button');node.className='light-track';node.setAttribute('aria-label',nsText(this.owner._hass,ch[0].toUpperCase()+ch.slice(1)));node.setAttribute('role','slider');
       node.innerHTML='<div class="light-fill"></div><div class="light-marker"></div><div class="light-value"></div>';
       const at=e=>{const r=node.getBoundingClientRect();return clamp(1-(e.clientY-r.top)/r.height,0,1);};
       node.addEventListener('pointerdown',e=>{
@@ -982,7 +1046,8 @@ class LightDialog {
       const node=this.tracks[ch], v=values[ch];node.disabled=!available||this.busy||!!this.drag&&this.drag!==ch;
       node.classList.toggle('dimmed',!available);
       node.classList.toggle('active',this.config.step_target==='last_used'&&this.active===ch);
-      node.setAttribute('aria-valuetext',ch==='hue'?Math.round(v*360)%360+' degrees':ch==='temperature'?Math.round(p.range[0]+v*(p.range[1]-p.range[0]))+' kelvin':Math.round(v*100)+'%');
+      node.setAttribute('aria-label',nsText(this.owner._hass,ch[0].toUpperCase()+ch.slice(1)));
+      node.setAttribute('aria-valuetext',ch==='hue'?Math.round(v*360)%360+(nsLanguage(this.owner._hass).startsWith('de')?' Grad':' degrees'):ch==='temperature'?Math.round(p.range[0]+v*(p.range[1]-p.range[0]))+(nsLanguage(this.owner._hass).startsWith('de')?' Kelvin':' kelvin'):Math.round(v*100)+'%');
       node.setAttribute('aria-valuemin','0');node.setAttribute('aria-valuemax','100');node.setAttribute('aria-valuenow',String(Math.round(v*100)));
       let gradient='';
       if(ch==='hue')gradient='linear-gradient(to top,red,yellow,lime,cyan,blue,magenta,red)';
@@ -994,7 +1059,7 @@ class LightDialog {
       const marker=node.querySelector('.light-marker'),lineHeight=node.classList.contains('active')?5:3;
       marker.style.top='clamp(0px, calc('+(1-v)*100+'% - '+(ch==='brightness'?0:lineHeight)+'px), calc(100% - '+lineHeight+'px))';
     });
-    this.buttons.forEach((b,i)=>{b.setAttribute('aria-label',(i===0?'Increase ':'Decrease ')+this.active);
+    this.buttons.forEach((b,i)=>{b.setAttribute('aria-label',nsText(this.owner._hass,i===0?'Increase':'Decrease')+' '+nsText(this.owner._hass,this.active[0].toUpperCase()+this.active.slice(1)));
       const dimmed=!available||!channels.includes(this.active)||this.active!=='hue'&&(i===0?values[this.active]>=1:values[this.active]<=0);
       b.classList.toggle('dimmed',dimmed);b.disabled=dimmed||this.busy||!!this.drag;});
     if(this.page) {
@@ -1085,7 +1150,7 @@ class NsBaseCard extends HTMLElement {
     // every state change in the house; on this hardware that is the difference
     // between a smooth panel and a stuttering one.
     const id = this._config.entity;
-    if (prev && prev.states[id] === hass.states[id]) {
+    if (prev && prev.states[id] === hass.states[id] && nsLanguage(prev) === nsLanguage(hass)) {
       if (this._lightDialog) this._lightDialog.render();
       return;
     }
@@ -1143,6 +1208,7 @@ class NsBaseCard extends HTMLElement {
     if (this._raf !== null) return;
     this._raf = requestAnimationFrame(() => {
       this._raf = null;
+      this.shadowRoot.querySelectorAll('.badge').forEach((b) => { if (b.textContent === 'Offline' || b.textContent === 'OFFLINE') b.textContent = nsText(this._hass,'Offline'); });
       this._render();
     });
   }
@@ -1508,7 +1574,9 @@ class NsPanelLightCard extends NsBaseCard {
     this._elValue.style.display = dimmable && on ? '' : 'none';
     const label = dimmable && on ? `${pct}` : '';
     if (this._elValue.firstChild.nodeType === Node.TEXT_NODE) this._elValue.firstChild.textContent = label;
-    this._elSub.textContent = broken ? 'Unavailable' : (on ? (dimmable ? `On · ${pct}%` : 'On') : 'Off');
+    this._elSub.textContent = broken ? nsText(this._hass,'Unavailable') : (on ? (dimmable ? `${nsText(this._hass,'On')} · ${pct}%` : nsText(this._hass,'On')) : nsText(this._hass,'Off'));
+    this._elBadge.textContent = nsText(this._hass,'Offline');
+    if (!this._explicitPresets) Array.from(this._elPresets.children).forEach((b,i)=>{ b.textContent=nsText(this._hass,cfg.presets[i].name); });
     this._elPresets.style.display = cfg.show_presets && this._presets().length ? '' : 'none';
     Array.from(this._elPresets.children).forEach((button, i) => {
       button.disabled = !lightPresetAllowed(s, cfg.presets[i]);
@@ -1659,10 +1727,10 @@ class NsPanelCoverCard extends NsBaseCard {
       accent: this._accent(),
       step: this._config.step,
       actions: [
-        { label: 'Open', icon: 'mdi:arrow-up', run: () => this._call('cover', 'open_cover') },
-        { label: 'Stop', icon: 'mdi:stop', primary: true, close: false,
+        { label: nsText(this._hass,'Open'), icon: 'mdi:arrow-up', run: () => this._call('cover', 'open_cover') },
+        { label: nsText(this._hass,'Stop'), icon: 'mdi:stop', primary: true, close: false,
           run: () => this._call('cover', 'stop_cover') },
-        { label: 'Close', icon: 'mdi:arrow-down', run: () => this._call('cover', 'close_cover') },
+        { label: nsText(this._hass,'Close'), icon: 'mdi:arrow-down', run: () => this._call('cover', 'close_cover') },
       ],
       onInput: (v) => {
         this._local = v;
@@ -1675,11 +1743,11 @@ class NsPanelCoverCard extends NsBaseCard {
 
   _stateText(s, pct) {
     if (!s) return '';
-    if (s.state === 'opening') return 'Opening';
-    if (s.state === 'closing') return 'Closing';
+    if (s.state === 'opening') return nsText(this._hass,'Opening');
+    if (s.state === 'closing') return nsText(this._hass,'Closing');
     const p = pct === undefined ? s.attributes.current_position : pct;
-    if (typeof p === 'number') return p >= 99 ? 'Open' : (p <= 0 ? 'Closed' : `${p}% open`);
-    return s.state === 'open' ? 'Open' : 'Closed';
+    if (typeof p === 'number') return p >= 99 ? nsText(this._hass,'Open') : (p <= 0 ? nsText(this._hass,'Closed') : `${p}% ${nsLanguage(this._hass).startsWith('de')?'offen':'open'}`);
+    return nsText(this._hass,s.state === 'open' ? 'Open' : 'Closed');
   }
 
   _render() {
@@ -1704,12 +1772,15 @@ class NsPanelCoverCard extends NsBaseCard {
       (pct >= 99 ? 'mdi:blinds-open' : pct <= 0 ? 'mdi:blinds' : 'mdi:blinds-horizontal'));
     this._elName.textContent = this._title();
 
-    if (this._valueShown !== pct || this._movingShown !== moving) {
+    if (this._valueShown !== pct || this._movingShown !== moving || this._languageShown !== nsLanguage(this._hass)) {
       this._valueShown = pct;
       this._movingShown = moving;
+      this._languageShown = nsLanguage(this._hass);
       this._elValue.innerHTML = broken ? '&mdash;' : `${pct}<small>%</small>`;
-      this._elSub.textContent = broken ? 'Unavailable' : this._stateText(s, pct);
+      this._elSub.textContent = broken ? nsText(this._hass,'Unavailable') : this._stateText(s, pct);
     }
+    this._elBadge.textContent = nsText(this._hass,'Offline');
+    if (!this._explicitPresets) Array.from(this._elPresets.children).forEach((b,i)=>{ b.textContent=nsText(this._hass,cfg.presets[i].name); });
   }
 }
 
@@ -1934,12 +2005,13 @@ function unitOf(stateObj) {
 
 /* Round for display. Default: one decimal below 100, none above, because
    three decimals of humidity is noise at arm's length. */
-function fmt(n, decimals) {
+function fmt(n, decimals, hass) {
   if (n === null || n === undefined) return '—';
   const d = decimals === null || decimals === undefined
     ? (Math.abs(n) >= 100 || Math.round(n) === n ? 0 : 1)
     : decimals;
-  return n.toFixed(d);
+  const value = n.toFixed(d);
+  return nsLanguage(hass).startsWith('de') ? value.replace('.', ',') : value;
 }
 
 function moreInfo(node, entityId) {
@@ -1996,7 +2068,7 @@ class NsInfoCard extends HTMLElement {
       for (let i = 0; i < ids.length; i++) {
         if (prev.states[ids[i]] !== hass.states[ids[i]]) { changed = true; break; }
       }
-      if (!changed) return;
+      if (!changed && nsLanguage(prev) === nsLanguage(hass)) return;
     }
     this._sync();
   }
@@ -2034,6 +2106,7 @@ class NsInfoCard extends HTMLElement {
     if (this._raf !== null) return;
     this._raf = requestAnimationFrame(() => {
       this._raf = null;
+      this.shadowRoot.querySelectorAll('.badge').forEach((b) => { if (b.textContent === 'Offline' || b.textContent === 'OFFLINE') b.textContent = nsText(this._hass,'Offline'); });
       this._render();
     });
   }
@@ -2173,7 +2246,7 @@ class NsPanelSensorCard extends NsInfoCard {
     this._elName.textContent = this._title();
 
     const unit = cfg.unit === null || cfg.unit === undefined ? unitOf(s) : cfg.unit;
-    const text = broken ? '—' : (n === null ? (s ? s.state : '—') : fmt(n, cfg.decimals));
+    const text = broken ? '—' : (n === null ? (s ? nsFormatState(this._hass,s,s.state) : '—') : fmt(n, cfg.decimals, this._hass));
     const stamp = text + '|' + unit;
     if (this._textShown !== stamp) {
       this._textShown = stamp;
@@ -2181,8 +2254,8 @@ class NsPanelSensorCard extends NsInfoCard {
     }
 
     const sec = cfg.secondary ? this._state(cfg.secondary) : null;
-    const subText = broken ? 'Unavailable'
-      : (sec ? `${friendly(sec, cfg.secondary)} ${fmt(numeric(sec), null)}${unitOf(sec)}` : '');
+    const subText = broken ? nsText(this._hass,'Unavailable')
+      : (sec ? `${friendly(sec, cfg.secondary)} ${fmt(numeric(sec), null, this._hass)}${unitOf(sec)}` : '');
     if (this._subShown !== subText) {
       this._subShown = subText;
       this._elSub.textContent = subText;
@@ -2267,7 +2340,7 @@ class NsPanelSensorsCard extends NsInfoCard {
       const unit = c.item.unit === undefined || c.item.unit === null
         ? unitOf(s) : c.item.unit;
       const text = broken ? '—'
-        : (n === null ? (s ? s.state : '—') : fmt(n, c.item.decimals));
+        : (n === null ? (s ? nsFormatState(this._hass,s,s.state) : '—') : fmt(n, c.item.decimals, this._hass));
       c.value.innerHTML = unit && !broken ? `${text}<small>${unit}</small>` : text;
       c.label.textContent = c.item.name || friendly(s, c.item.entity);
       if (c.icon) {
@@ -2505,6 +2578,7 @@ class NsPanelButtonCard extends NsInfoCard {
   connectedCallback() { super.connectedCallback(); this._render(); }
 
   setConfig(config) {
+    this._explicitConfirmText = Object.prototype.hasOwnProperty.call(config, 'confirm_text');
     super.setConfig(config);
     // Initial labels and availability do not depend on HA or a future frame.
     this._render();
@@ -2563,7 +2637,7 @@ class NsPanelButtonCard extends NsInfoCard {
 
   _label(item) {
     const s = item.entity ? this._state(item.entity) : null;
-    return item.name || friendly(s, item.entity) || 'Run';
+    return item.name || friendly(s, item.entity) || nsText(this._hass,'Run');
   }
 
   _icon(item) {
@@ -2601,7 +2675,7 @@ class NsPanelButtonCard extends NsInfoCard {
     if (wants && !b.armed) {
       b.armed = true;
       b.el.classList.add('ask');
-      b.label.textContent = b.item.confirm_text || this._config.confirm_text;
+      b.label.textContent = b.item.confirm_text || (this._explicitConfirmText ? this._config.confirm_text : nsText(this._hass,'Tap again'));
       this._later(() => {
         b.armed = false;
         b.el.classList.remove('ask');
@@ -2774,6 +2848,8 @@ class NsPanelSwitchCard extends NsInfoCard {
   }
 
   setConfig(config) {
+    this._explicitOnText = Object.prototype.hasOwnProperty.call(config, 'on_text');
+    this._explicitOffText = Object.prototype.hasOwnProperty.call(config, 'off_text');
     super.setConfig(config);
     if (!this._items.length) {
       throw new Error(
@@ -2986,8 +3062,9 @@ class NsPanelSwitchCard extends NsInfoCard {
       if (b.icon) b.icon.setAttribute('icon', broken ? 'mdi:alert-circle-outline' : this._icon(b, on));
       b.label.textContent = b.item.name || friendly(s, b.item.entity);
       if (b.circuit) b.circuit.textContent = b.item.circuit || '';
-      b.state.textContent = broken ? 'Unavailable'
-        : (on ? this._config.on_text : this._config.off_text);
+      b.state.textContent = broken ? nsText(this._hass,'Unavailable')
+        : (on ? (this._explicitOnText ? this._config.on_text : nsText(this._hass,'On'))
+          : (this._explicitOffText ? this._config.off_text : nsText(this._hass,'Off')));
     });
   }
 }
@@ -3169,16 +3246,16 @@ class NsPanelAlarmCard extends NsInfoCard {
   /* The button row is rebuilt only when what it should hold changes -
      disarmed vs not, and which modes - so a state tick never touches it. */
   _buttons(disarmed, modes, broken) {
-    const key = broken ? 'none' : (disarmed ? 'arm:' + modes.map((m) => m[0]).join(',') : 'disarm');
+    const key = (broken ? 'none' : (disarmed ? 'arm:' + modes.map((m) => m[0]).join(',') : 'disarm')) + ':' + nsLanguage(this._hass);
     if (key === this._rowKey) return;
     this._rowKey = key;
     this._row.innerHTML = '';
     if (broken) { this._row.removeAttribute('data-n'); return; }
     const items = disarmed
-      ? modes.map((m) => ({ icon: m[4], label: m[1], service: m[2], arming: true,
-        title: 'Arm ' + m[1].toLowerCase() }))
-      : [{ icon: 'mdi:shield-off-outline', label: 'Disarm', service: 'alarm_disarm',
-        arming: false, title: 'Disarm' }];
+      ? modes.map((m) => ({ icon: m[4], label: nsText(this._hass,m[1]), service: m[2], arming: true,
+        title: nsLanguage(this._hass).startsWith('de') ? nsText(this._hass,m[1]) + ' scharfschalten' : 'Arm ' + m[1].toLowerCase() }))
+      : [{ icon: 'mdi:shield-off-outline', label: nsText(this._hass,'Disarm'), service: 'alarm_disarm',
+        arming: false, title: nsText(this._hass,'Disarm') }];
     this._row.setAttribute('data-n', String(items.length));
     items.forEach((it) => {
       const b = document.createElement('button');
@@ -3202,9 +3279,9 @@ class NsPanelAlarmCard extends NsInfoCard {
     this._card.classList.toggle('broken', broken);
     // `icon` is the resting (disarmed) icon; the armed and alarm states keep their own
     this._icon.setAttribute('icon', (!broken && s.state === 'disarmed' && this._config.icon) || look[2]);
-    this._st.textContent = this._pendingLabel || look[0];
+    this._st.textContent = nsText(this._hass,this._pendingLabel || look[0]);
     const by = s && s.attributes && s.attributes.changed_by;
-    this._sub.textContent = this._title() + (by ? ' \u00b7 by ' + by : '');
+    this._sub.textContent = this._title() + (by ? (nsLanguage(this._hass).startsWith('de') ? ' \u00b7 von ' : ' \u00b7 by ') + by : '');
     this._buttons(!broken && s.state === 'disarmed', this._modes(), broken);
   }
 }
@@ -3305,7 +3382,8 @@ class NsKeypad extends HTMLElement {
     clearTimeout(this._closeTimer);
     nsOwnDialog(this, opts.owner);
     this._nsGeneration = (this._nsGeneration || 0) + 1;
-    this._opts = Object.assign({ hint: 'Enter the code', accent: '#8ddba4', text: false }, opts);
+    this._opts = Object.assign({ hint: nsText(opts.owner && opts.owner._hass,'Enter the code'), accent: '#8ddba4', text: false }, opts);
+    this.shadowRoot.querySelector('.x').setAttribute('aria-label',nsText(opts.owner && opts.owner._hass,'Close'));
     this.style.setProperty('--ns-accent', this._opts.accent);
     this._title.textContent = this._opts.title || '';
     this._ok.textContent = this._opts.title || 'OK';
@@ -3338,7 +3416,7 @@ class NsKeypad extends HTMLElement {
   get _entered() { return this._opts && this._opts.text ? this._input.value : this._code; }
 
   _setHint(wrong) {
-    this._hint.textContent = wrong ? 'Wrong code' : this._opts.hint;
+    this._hint.textContent = wrong ? nsText(this._opts.owner && this._opts.owner._hass,'Wrong code') : this._opts.hint;
     this._hint.classList.toggle('wrong', wrong);
     this._dots.classList.toggle('wrong', wrong);
   }
@@ -3436,6 +3514,7 @@ class NsPanelStatusCard extends NsInfoCard {
   }
 
   setConfig(config) {
+    this._explicitAllClear = Object.prototype.hasOwnProperty.call(config, 'all_clear');
     super.setConfig(config);
     if (!this._items.length) {
       throw new Error(`${this.constructor.cardType}: "entities" needs at least one entity`);
@@ -3460,19 +3539,20 @@ class NsPanelStatusCard extends NsInfoCard {
   }
 
   _stateLabel(item, s) {
-    if (!s) return 'Missing';
-    if (s.state === 'unavailable') return 'Unavailable';
-    if (s.state === 'unknown') return 'Unknown';
+    if (!s) return nsText(this._hass,'Missing');
+    if (s.state === 'unavailable') return nsText(this._hass,'Unavailable');
+    if (s.state === 'unknown') return nsText(this._hass,'Unknown');
+    if (this._hass && typeof this._hass.formatEntityState === 'function') return nsFormatState(this._hass,s,s.state);
     if (item.entity.split('.')[0] === 'binary_sensor') {
       const c = deviceClass(s);
       const on = s.state === 'on';
       if (c === 'door' || c === 'window' || c === 'garage_door' || c === 'opening') {
-        return on ? 'Open' : 'Closed';
+        return nsText(this._hass,on ? 'Open' : 'Closed');
       }
-      if (c === 'motion' || c === 'occupancy') return on ? 'Detected' : 'Clear';
-      if (c === 'moisture') return on ? 'Wet' : 'Dry';
-      if (c === 'problem') return on ? 'Problem' : 'OK';
-      return on ? 'On' : 'Off';
+      if (c === 'motion' || c === 'occupancy') return nsText(this._hass,on ? 'Detected' : 'Clear');
+      if (c === 'moisture') return nsText(this._hass,on ? 'Wet' : 'Dry');
+      if (c === 'problem') return nsText(this._hass,on ? 'Problem' : 'OK');
+      return nsText(this._hass,on ? 'On' : 'Off');
     }
     return s.state.charAt(0).toUpperCase() + s.state.slice(1).replace(/_/g, ' ');
   }
@@ -3521,6 +3601,7 @@ class NsPanelStatusCard extends NsInfoCard {
 
   _render() {
     if (!this._tiles) return;
+    this._clear.querySelector('div').textContent = this._explicitAllClear ? this._config.all_clear : nsText(this._hass,'All clear');
     let problems = 0;
     this._tiles.forEach((t) => {
       const s = this._state(t.item.entity);
@@ -3710,7 +3791,7 @@ class NsPanelClimateCard extends NsBaseCard {
   _openSheet() {
     const s = this._stateObj;
     const acts = this._hvacModes().map((m) => ({
-      label: HVAC_LABELS[m],
+      label: nsText(this._hass,HVAC_LABELS[m]),
       icon: HVAC_ICONS[m],
       primary: s && s.state === m,
       run: () => this._call('climate', 'set_hvac_mode', { hvac_mode: m }),
@@ -3737,11 +3818,11 @@ class NsPanelClimateCard extends NsBaseCard {
     if (!s) return '';
     const a = s.attributes || {};
     const now = typeof a.current_temperature === 'number'
-      ? `Now ${fmt(a.current_temperature, 1)}°` : '';
+      ? `${nsLanguage(this._hass).startsWith('de')?'Jetzt':'Now'} ${fmt(a.current_temperature, 1, this._hass)}°` : '';
     const action = a.hvac_action
       ? a.hvac_action.charAt(0).toUpperCase() + a.hvac_action.slice(1)
       : (HVAC_LABELS[s.state] || s.state);
-    return now ? `${now} · ${action}` : action;
+    return now ? `${now} · ${nsText(this._hass,action)}` : nsText(this._hass,action);
   }
 
   _render() {
@@ -3764,12 +3845,13 @@ class NsPanelClimateCard extends NsBaseCard {
       HVAC_ICONS[s ? s.state : 'off'] || 'mdi:thermostat');
     this._elName.textContent = this._title();
 
-    const stamp = `${target}|${off}|${broken}`;
+    const stamp = `${target}|${off}|${broken}|${s&&s.state}|${s&&s.attributes.current_temperature}|${s&&s.attributes.hvac_action}|${nsLanguage(this._hass)}`;
     if (this._shown !== stamp) {
       this._shown = stamp;
-      this._elValue.innerHTML = broken || off ? '' : `${fmt(target, 1)}<small>&deg;</small>`;
-      this._elSub.textContent = broken ? 'Unavailable' : this._stateText(s);
+      this._elValue.innerHTML = broken || off ? '' : `${fmt(target, 1, this._hass)}<small>&deg;</small>`;
+      this._elSub.textContent = broken ? nsText(this._hass,'Unavailable') : this._stateText(s);
     }
+    if (!this._explicitPresets) Array.from(this._elPresets.children).forEach((b,i)=>{ b.textContent=nsText(this._hass,cfg.presets[i].name); });
   }
 }
 
@@ -3900,14 +3982,14 @@ class NsPanelMediaCard extends NsBaseCard {
     const s = this._stateObj;
     const a = (s && s.attributes) || {};
     const device = this._title();
-    if (isBroken(s)) return { top: device, sub: 'Unavailable' };
+    if (isBroken(s)) return { top: device, sub: nsText(this._hass,'Unavailable') };
     if (this._idle()) {
-      return { top: device, sub: s && s.state === 'off' ? 'Off' : 'Nothing playing' };
+      return { top: device, sub: nsText(this._hass,s && s.state === 'off' ? 'Off' : 'Nothing playing') };
     }
     const top = a.media_title || device;
     const sub = a.media_artist || a.media_series_title || a.media_channel ||
-      a.media_album_name || (a.media_title ? device : (s.state === 'paused' ? 'Paused' : 'Playing'));
-    return { top, sub: s.state === 'paused' ? `Paused · ${sub}` : sub };
+      a.media_album_name || (a.media_title ? device : nsText(this._hass,s.state === 'paused' ? 'Paused' : 'Playing'));
+    return { top, sub: s.state === 'paused' ? `${nsText(this._hass,'Paused')} · ${sub}` : sub };
   }
 
   _defaultIcon() {
@@ -3998,25 +4080,25 @@ class NsPanelMediaCard extends NsBaseCard {
     const s = this._stateObj;
     const acts = [];
     if (this._supports(MP_PREV)) {
-      acts.push({ label: 'Previous', icon: 'mdi:skip-previous',
+      acts.push({ label: nsText(this._hass,'Previous'), icon: 'mdi:skip-previous',
         close: false, run: () => this._call('media_player', 'media_previous_track') });
     }
     acts.push({
-      label: this._playing() ? 'Pause' : 'Play',
+      label: nsText(this._hass,this._playing() ? 'Pause' : 'Play'),
       icon: this._playing() ? 'mdi:pause' : 'mdi:play',
       primary: true,
       close: false,
       run: () => this._call('media_player', 'media_play_pause'),
     });
     if (this._supports(MP_NEXT)) {
-      acts.push({ label: 'Next', icon: 'mdi:skip-next',
+      acts.push({ label: nsText(this._hass,'Next'), icon: 'mdi:skip-next',
         close: false, run: () => this._call('media_player', 'media_next_track') });
     }
     if (this._supports(MP_STOP)) {
-      acts.push({ label: 'Stop', icon: 'mdi:stop',
+      acts.push({ label: nsText(this._hass,'Stop'), icon: 'mdi:stop',
         run: () => this._call('media_player', 'media_stop') });
     } else if (this._supports(MP_TURN_OFF)) {
-      acts.push({ label: 'Off', icon: 'mdi:power',
+      acts.push({ label: nsText(this._hass,'Off'), icon: 'mdi:power',
         run: () => this._call('media_player', 'turn_off') });
     }
 
@@ -4088,6 +4170,7 @@ class NsPanelMediaCard extends NsBaseCard {
         if (b.def.key === 'play') {
           b.icon.setAttribute('icon', playing ? 'mdi:pause' : 'mdi:play');
         }
+        b.el.setAttribute('aria-label',nsText(this._hass,b.def.key==='prev'?'Previous':b.def.key==='next'?'Next':playing?'Pause':'Play'));
       });
     }
   }
@@ -4242,18 +4325,21 @@ class NsPanelWeatherCard extends NsInfoCard {
 
     const temp = typeof a.temperature === 'number' ? a.temperature : null;
     const unit = (a.temperature_unit || '°');
-    this._elValue.innerHTML = temp === null ? '—' : `${fmt(temp, 0)}<small>${unit}</small>`;
+    this._elValue.innerHTML = temp === null ? '—' : `${fmt(temp, 0, this._hass)}<small>${unit}</small>`;
 
     const bits = [];
     if (s && s.state) {
-      bits.push(CONDITION_LABELS[s.state] ||
-        s.state.replace(/-/g, ' ').replace(/^./, (c) => c.toUpperCase()));
+      const english = CONDITION_LABELS[s.state] ||
+        s.state.replace(/-/g, ' ').replace(/^./, (c) => c.toUpperCase());
+      bits.push(this._hass && typeof this._hass.formatEntityState === 'function'
+        ? nsFormatState(this._hass,s,english)
+        : nsLanguage(this._hass).startsWith('de') ? (NS_DE_WEATHER[s.state] || english) : english);
     }
-    if (typeof a.humidity === 'number') bits.push(`${fmt(a.humidity, 0)}%`);
+    if (typeof a.humidity === 'number') bits.push(`${fmt(a.humidity, 0, this._hass)}%`);
     if (typeof a.wind_speed === 'number') {
-      bits.push(`${fmt(a.wind_speed, 0)} ${a.wind_speed_unit || ''}`.trim());
+      bits.push(`${fmt(a.wind_speed, 0, this._hass)} ${a.wind_speed_unit || ''}`.trim());
     }
-    this._elSub.textContent = broken ? 'Unavailable' : bits.join(' · ');
+    this._elSub.textContent = broken ? nsText(this._hass,'Unavailable') : bits.join(' · ');
 
     this._renderForecast(unit);
   }
@@ -4264,7 +4350,7 @@ class NsPanelWeatherCard extends NsInfoCard {
   _renderForecast(unit) {
     const list = this._config.show_forecast ? this._forecastList() : [];
     const stamp = JSON.stringify(list.map((f) => [f.datetime, f.condition,
-      f.temperature, f.templow]));
+      f.temperature, f.templow])) + ':' + nsLanguage(this._hass);
     if (stamp === this._fcShown) return;
     this._fcShown = stamp;
 
@@ -4277,13 +4363,13 @@ class NsPanelWeatherCard extends NsInfoCard {
       const label = when
         ? (this._config.forecast_type === 'hourly'
           ? String(when.getHours()).padStart(2, '0')
-          : DAY_NAMES[when.getDay()])
+          : new Intl.DateTimeFormat(nsLanguage(this._hass),{weekday:'short'}).format(when))
         : '';
-      const low = typeof f.templow === 'number' ? `<span>${fmt(f.templow, 0)}</span>` : '';
+      const low = typeof f.templow === 'number' ? `<span>${fmt(f.templow, 0, this._hass)}</span>` : '';
       d.innerHTML =
         `<div class="dd">${label}</div>` +
         `<ha-icon icon="${WEATHER_ICONS[f.condition] || 'mdi:weather-cloudy'}"></ha-icon>` +
-        `<div class="dt">${fmt(f.temperature, 0)}${unit === '%' ? '' : ''}${low}</div>`;
+        `<div class="dt">${fmt(f.temperature, 0, this._hass)}${unit === '%' ? '' : ''}${low}</div>`;
       this._elFc.appendChild(d);
     });
   }
@@ -4296,11 +4382,6 @@ class NsPanelWeatherCard extends NsInfoCard {
  * time is doing something useful for free. One timer, aligned to the top of
  * the minute so the digits change when they should, writing textContent.
  * ================================================================== */
-
-const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
-  'August', 'September', 'October', 'November', 'December'];
-const DAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday',
-  'Friday', 'Saturday'];
 
 class NsPanelClockCard extends NsInfoCard {
   static get cardType() { return 'nspanel-clock-card'; }
@@ -4381,8 +4462,8 @@ class NsPanelClockCard extends NsInfoCard {
 
     this._elDate.hidden = !cfg.show_date;
     if (cfg.show_date) {
-      this._elDate.textContent =
-        `${DAYS_LONG[now.getDay()]} ${now.getDate()} ${MONTHS[now.getMonth()]}`;
+      this._elDate.textContent = new Intl.DateTimeFormat(nsLanguage(this._hass),
+        { weekday: 'long', day: 'numeric', month: 'long' }).format(now);
     }
 
     const s = cfg.entity ? this._state(cfg.entity) : null;
@@ -4622,6 +4703,71 @@ const EDITOR_LABELS = {
   sounds: 'Sounds on the panel app',
 };
 
+const EDITOR_DE = {
+  entity: 'Entität', presets: 'Vorgaben', entities: 'Entitäten', buttons: 'Tasten',
+  switches: 'Schalter', detail_entity: 'Detailentität bei langem Druck',
+  step_target: 'Ziel für Plus/Minus', effect_favorites: 'Bevorzugte Effekte',
+  severity: 'Schweregradfarben', name: 'Name', brightness_pct: 'Helligkeit (%)',
+  color_temp_kelvin: 'Farbtemperatur (K)', rgb_color: 'Farbe', effect: 'Effekt',
+  scene: 'Szene', position: 'Position (%)', temperature: 'Temperatur',
+  hvac_mode: 'Klimamodus', preset_mode: 'Vorgabemodus', source: 'Quelle',
+  media_content_id: 'Medien-ID', media_content_type: 'Medientyp', volume_pct: 'Lautstärke (%)',
+  service: 'Dienst (statt des Entitätsdienstes)', data: 'Dienstdaten',
+  problem_when: 'Problem bei Zustand', above: 'Über', color: 'Farbe (Hex)',
+  on_text: 'Text bei Ein', off_text: 'Text bei Aus', show_name: 'Namen anzeigen',
+  show_state: 'Zustand anzeigen', compact_rows: 'Kompakte Zeilen für Seitentasten',
+  groups: 'Raumgruppen (Name und Schalter)', circuit: 'Stromkreis',
+  interval: 'Sekunden zwischen Bildern', fit: 'Bildanpassung',
+  state_entity: 'Leuchtet, wenn diese Entität an ist', dots: 'Seitenpunkte',
+  start: 'Startseite', card_spacing: 'Abstand zwischen Seiten (px)',
+  tap_action: 'Lokale Tippaktion', return_to_start_after: 'Rückkehr zur Startseite (Sekunden, 0 deaktiviert)',
+  return_to_start_overrides: 'Rückkehrzeiten je Seite', page: 'Seitenindex (ab 0)',
+  after: 'Sekunden (0 deaktiviert auf dieser Seite)', cards: 'Seiten (Karten)',
+  title: 'Titel', icon: 'Symbol', height: 'Höhe (px)', accent: 'Akzentfarbe (Hex)',
+  show_presets: 'Vorgaben anzeigen', live: 'Während des Ziehens aktualisieren',
+  echo_ms: 'Zustandsrückmeldung ignorieren (ms)', drag_travel: 'Ziehweg (px, 0 = Kartenhöhe)',
+  swipe_safe: 'Seitliches Wischen wechselt die Seite',
+  swap_press_actions: 'Tipp- und Halteaktion tauschen',
+  long_press: 'Detailaktion (halten oder tippen nach Tausch)', long_press_ms: 'Langer Druck (ms)',
+  step: 'Schrittweite der Plus/Minus-Tasten', haptics: 'Vibration',
+  more_info: 'Tippen öffnet Details', follow_color: 'Eigenfarbe des Lichts verwenden',
+  secondary: 'Zweite Entität (darunter)', unit: 'Einheit (leer = Entitätseinheit)',
+  decimals: 'Nachkommastellen', min: 'Bereichsminimum', max: 'Bereichsmaximum',
+  bar: 'Wert als Balken anzeigen', show_icons: 'Symbole anzeigen',
+  only_problems: 'Nur Probleme anzeigen', columns: 'Spalten',
+  all_clear: 'Text ohne Probleme', show_forecast: 'Vorhersage anzeigen',
+  forecast_type: 'Vorhersage', forecast_count: 'Vorhersageeinträge',
+  hour_24: '24-Stunden-Uhr', show_date: 'Datum anzeigen',
+  show_seconds: 'Sekunden anzeigen', show_art: 'Albumcover anzeigen',
+  show_transport: 'Wiedergabetasten anzeigen', confirm: 'Zweites Tippen verlangen',
+  confirm_text: 'Text während der Bestätigung', feedback_ms: 'Häkchen anzeigen (ms)',
+  modes: 'Scharfschaltmodi', sounds: 'Töne in der Panel-App',
+};
+const EDITOR_NOTES_DE = {
+  'nspanel-media-card': 'Vorgaben sind Favoriten: Quelle auswählen oder Medien-ID abspielen.',
+  'nspanel-switch-card': 'Ein Schalter: Entität wählen. Mehrere: unter Schalter hinzufügen; diese haben Vorrang.',
+  'nspanel-camera-card': 'Standbild wird nur aktualisiert, solange die Karte sichtbar ist. Tippen öffnet die Liveansicht in Home Assistant.',
+  'nspanel-swipe-card': 'Jede Seite ist eine Karte, meist ein vertikaler Stapel in Panelhöhe. Die native App verwendet dieselbe Seitenliste.',
+  'nspanel-button-card': 'Entität auswählen oder Tasten mit Dienst oder lokaler Seitennavigation hinzufügen. Seitenindizes beginnen bei 0.',
+  'nspanel-alarm-card': 'Nicht unterstützte Scharfschaltmodi bleiben verborgen. Töne und Vibration wirken nur in der nativen Panel-App.',
+  'nspanel-sensor-card': 'Schweregradfarben: Es gilt die letzte Farbe, deren Grenzwert überschritten wird.',
+  'nspanel-weather-card': 'Die Vorhersage kommt über ein eigenes Home-Assistant-Abonnement. Deaktivieren, wenn die Entität keine Vorhersage hat.',
+  'nspanel-clock-card': 'Die Entität ist optional: Kalender oder Sensor für eine Zeile unter der Uhr auswählen oder leer lassen.',
+};
+function editorSchemaLocale(rows, hass) {
+  if (!nsLanguage(hass).startsWith('de')) return rows;
+  return rows.map((row) => {
+    const copy = { ...row };
+    if (row.schema) copy.schema = editorSchemaLocale(row.schema, hass);
+    const select = row.selector && row.selector.select;
+    if (select && Array.isArray(select.options)) {
+      copy.selector = { ...row.selector, select: { ...select,
+        options: select.options.map((option) => ({ ...option, label: nsText(hass, option.label) })) } };
+    }
+    return copy;
+  });
+}
+
 /* A list of objects, drawn by HA's object selector: one row per item with
    add, edit and delete, and a form per item built from `fields`. Keys an
    item carries that are not fields survive the card editor (it only merges
@@ -4730,7 +4876,9 @@ class NsBaseCardEditor extends HTMLElement {
     `;
     this.shadowRoot.querySelector('.note').textContent = this.constructor.note;
     this._form = this.shadowRoot.querySelector('ha-form');
-    this._form.computeLabel = (schema) => EDITOR_LABELS[schema.name] || schema.name;
+    this._form.computeLabel = (schema) => nsLanguage(this._hass).startsWith('de')
+      ? (EDITOR_DE[schema.name] || EDITOR_LABELS[schema.name] || schema.name)
+      : (EDITOR_LABELS[schema.name] || schema.name);
     this._form.addEventListener('value-changed', (e) => this._valueChanged(e));
   }
 
@@ -4742,6 +4890,10 @@ class NsBaseCardEditor extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     this._form.hass = hass;
+    this.shadowRoot.querySelector('.note').textContent = nsLanguage(hass).startsWith('de')
+      ? (EDITOR_NOTES_DE[this.constructor.cardType] || this.constructor.note)
+      : this.constructor.note;
+    if (this._config) this._push();
   }
 
   /* rows = the card's own options; the entity row is prepended here because
@@ -4749,9 +4901,9 @@ class NsBaseCardEditor extends HTMLElement {
      optional (the clock), or absent entirely (the list cards). */
   get _schema() {
     const c = this.constructor;
-    if (!c.hasEntityRow) return c.rows;
+    if (!c.hasEntityRow) return editorSchemaLocale(c.rows, this._hass);
     const selector = c.domain ? { entity: { domain: c.domain } } : { entity: {} };
-    return [{ name: 'entity', required: c.entityRequired, selector }].concat(c.rows);
+    return editorSchemaLocale([{ name: 'entity', required: c.entityRequired, selector }].concat(c.rows), this._hass);
   }
 
   /* `name` was the old spelling of `title`. Show it in the title box so the
@@ -5356,7 +5508,7 @@ class NsPanelCameraCard extends NsInfoCard {
     this._elLabel.hidden = !show;
     this._elScrim.hidden = !show || this._img.hidden;
     this._elLabel.textContent = this._title();
-    this._elEmptyText.textContent = gone ? 'Camera unavailable' : 'Loading\u2026';
+    this._elEmptyText.textContent = nsText(this._hass, gone ? 'Camera unavailable' : 'Loading…');
     // the first hass is when the camera's token arrives
     if (this._visible && !this._waiting && !this._timer) this._poll();
   }

@@ -1,5 +1,8 @@
 # NSPanel Cards
 
+The browser cards and their editors use the Home Assistant frontend language for built-in
+labels (English or German). Entity names and labels supplied in card YAML stay unchanged.
+
 [![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-donate-ffdd00?style=for-the-badge&logo=buymeacoffee&logoColor=black)](https://bunq.me/mennovanhout)
 
 Lovelace cards built for one specific piece of hardware: the **Sonoff NSPanel Pro**, in both
